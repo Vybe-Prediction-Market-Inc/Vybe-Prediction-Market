@@ -1,7 +1,8 @@
 import dotenv from "dotenv";
 import axios from "axios";
 import { ethers } from "ethers";
-dotenv.config({ path: '../.env' });
+
+dotenv.config();
 
 async function getSpotifyToken() {
     const clientId = process.env.SPOTIFY_CLIENT_ID;
@@ -12,16 +13,20 @@ async function getSpotifyToken() {
     }
 
     const data = new URLSearchParams({
-        'grant_type': 'client_credentials',
-        'client_id': clientId,
-        'client_secret': clientSecret
+        grant_type: "client_credentials",
+        client_id: clientId,
+        client_secret: clientSecret,
     });
 
-    const response = await axios.post('https://accounts.spotify.com/api/token', data, {
-        headers: {
-            'Content-Type': 'application/x-www-form-urlencoded'
+    const response = await axios.post(
+        "https://accounts.spotify.com/api/token",
+        data,
+        {
+            headers: {
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
         }
-    });
+    );
 
     return response.data.access_token;
 }
