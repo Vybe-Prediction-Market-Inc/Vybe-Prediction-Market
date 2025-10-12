@@ -1,30 +1,43 @@
 'use client';
 
-import Link from 'next/link';
+import { useState } from "react";
+import SearchBar from "@/components/SearchBar";
 
 export default function ExplorePage() {
-  return (
-    <div className="mx-auto max-w-6xl px-4 space-y-6">
-      <section className="card">
-        <div className="card-body">
-          <h1 className="h2">Explore Markets</h1>
-          <p className="mt-1 muted">Browse trending and new markets.</p>
-        </div>
-      </section>
+  const [searchQuery, setSearchQuery] = useState("");
 
-      <section className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {[...Array(9)].map((_, i) => (
-          <Link
-            key={i}
-            href={`/event?slug=market-${i + 1}`}
-            className="rounded-xl border border-white/10 p-5 bg-white/5 hover:border-white/20 transition"
+  const handleSearch = (query: string) => {
+    setSearchQuery(query);
+    console.log("Searching for:", query);
+    // TODO: Hook this up to backend or filter events list
+  };
+
+  return (
+    <div className="p-8 text-white space-y-6">
+      <h1 className="text-3xl font-bold mb-4">Explore Events</h1>
+      <SearchBar placeholder="Search for artists, tracks, or markets..." onSearch={handleSearch} />
+
+      {searchQuery ? (
+        <p className="text-gray-300 mt-4">Showing results for: <span className="text-[#1ED760]">{searchQuery}</span></p>
+      ) : (
+        <p className="text-gray-400 mt-4">Browse trending prediction markets below.</p>
+      )}
+
+      {/* TODO: Replace this with dynamic events */}
+      <div className="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {[1, 2, 3, 4, 5, 6].map((event) => (
+          <div
+            key={event}
+            className="bg-[#191414] border border-[#1DB954]/20 rounded-lg p-4 hover:border-[#1DB954] transition"
           >
-            <div className="text-sm muted">Market #{i + 1}</div>
-            <div className="mt-1 font-semibold">Will ETH flip BTC by 2026?</div>
-            <div className="mt-3 text-sm muted">Ends: TBA</div>
-          </Link>
+            <h2 className="text-xl font-semibold mb-2">Sample Event {event}</h2>
+            <p className="text-sm text-gray-400 mb-4">Description of the event goes here.</p>
+            <button className="px-4 py-2 bg-[#1DB954] hover:bg-[#1ED760] text-black rounded-full font-medium transition">
+              View Event
+            </button>
+          </div>
         ))}
-      </section>
+      </div>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { useNexusOnboarding } from "@/hooks/useNexusOnboarding";
