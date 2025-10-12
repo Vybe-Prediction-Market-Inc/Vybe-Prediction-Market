@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+
 /// @title Vybe Prediction Market (Parimutuel prototype)
 /// @notice Simple binary prediction markets funded in ETH. Users buy YES/NO shares before a deadline.
 /// After resolution by a designated oracle, winners redeem a pro-rata share of the total pot.
-contract VybePredictionMarket {
+contract VybePredictionMarket is Ownable, ReentrancyGuard {
     struct Market {
         // Metadata
         string question; // Human-readable text
@@ -26,15 +29,11 @@ contract VybePredictionMarket {
     }
 
     // Admins
-    address public owner;
     address public oracle; // Account allowed to resolve markets
 
     // Markets
     uint256 public marketCount;
     mapping(uint256 => Market) private markets;
-
-    // Reentrancy guard (simple)
-    uint256 private locked = 1; // 1 = unlocked, 2 = locked
 
     // Events
     event MarketCreated(
@@ -48,25 +47,12 @@ contract VybePredictionMarket {
     event Resolved(uint256 indexed marketId, bool outcomeYes, uint256 yesPool, uint256 noPool);
     event Redeemed(uint256 indexed marketId, address indexed user, uint256 payout);
 
-    modifier onlyOwner() {
-        require(msg.sender == owner, "not owner");
-        _;
-    }
-
     modifier onlyOracle() {
         require(msg.sender == oracle, "not oracle");
         _;
     }
 
-    modifier nonReentrant() {
-        require(locked == 1, "reentrancy");
-        locked = 2;
-        _;
-        locked = 1;
-    }
-
-    constructor(address _oracle) {
-        owner = msg.sender;
+    constructor(address _oracle) Ownable(msg.sender) {
         oracle = _oracle;
     }
 
