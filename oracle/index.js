@@ -67,8 +67,7 @@ async function main() {
     const marketAddress = process.env.MARKET_ADDRESS;
     if (!marketAddress) throw new Error("Missing MARKET_ADDRESS");
     const popularity = await fetchSpotifyStreams(trackId);
-    console.log(popularity);
-    // await postToOracleContract(marketAddress, popularity);
+    await postToOracleContract(marketAddress, popularity);
 }
 
 main().catch((e) => {
