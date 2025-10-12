@@ -1,9 +1,33 @@
-import "dotenv/config";
+import dotenv from "dotenv";
 import axios from "axios";
 import { ethers } from "ethers";
+dotenv.config({ path: '../.env' });
+
+async function getSpotifyToken() {
+    const clientId = process.env.SPOTIFY_CLIENT_ID;
+    const clientSecret = process.env.SPOTIFY_CLIENT_SECRET;
+
+    if (!clientId || !clientSecret) {
+        throw new Error("Missing SPOTIFY_CLIENT_ID or SPOTIFY_CLIENT_SECRET");
+    }
+
+    const data = new URLSearchParams({
+        'grant_type': 'client_credentials',
+        'client_id': clientId,
+        'client_secret': clientSecret
+    });
+
+    const response = await axios.post('https://accounts.spotify.com/api/token', data, {
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded'
+        }
+    });
+
+    return response.data.access_token;
+}
 
 async function fetchSpotifyStreams(trackId) {
-    const token = process.env.SPOTIFY_TOKEN; // for hackathon, you can generate manually
+    const token = await getSpotifyToken();
     const res = await axios.get(
         `https://api.spotify.com/v1/tracks/${trackId}`,
         {
@@ -38,7 +62,8 @@ async function main() {
     const marketAddress = process.env.MARKET_ADDRESS;
     if (!marketAddress) throw new Error("Missing MARKET_ADDRESS");
     const popularity = await fetchSpotifyStreams(trackId);
-    await postToOracleContract(marketAddress, popularity);
+    console.log(popularity);
+    // await postToOracleContract(marketAddress, popularity);
 }
 
 main().catch((e) => {
