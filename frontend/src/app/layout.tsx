@@ -4,13 +4,13 @@ import './globals.css';
 import { WagmiProvider } from 'wagmi';
 import { getDefaultConfig, RainbowKitProvider } from '@rainbow-me/rainbowkit';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { mainnet } from 'wagmi/chains';
+import { mainnet, base } from 'wagmi/chains';
 import '@rainbow-me/rainbowkit/styles.css';
 
 const config = getDefaultConfig({
   appName: 'Vybe Prediction Market',
-  projectId: 'YOUR_WALLETCONNECT_PROJECT_ID', // 👈 replace this
-  chains: [mainnet],
+  projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID!,
+  chains: [mainnet, base], // add other chains here later for Nexus to support
   ssr: true,
 });
 
