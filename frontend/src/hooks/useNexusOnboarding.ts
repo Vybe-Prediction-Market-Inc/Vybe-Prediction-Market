@@ -3,6 +3,13 @@
 import { useState } from "react";
 import { useAccount, useConnectorClient } from "wagmi";
 import { nexus } from "@/lib/nexus";
+import { EIP1193Provider, EIP1193RequestFn } from "viem";
+
+interface NexusProvider {
+  request: EIP1193RequestFn;
+  on: <T extends string>(event: T, listener: (...args: any[]) => void) => NexusProvider;
+  removeListener: <T extends string>(event: T, listener: (...args: any[]) => void) => NexusProvider;
+}
 
 export function useNexusOnboarding() {
   const { address, isConnected } = useAccount();
@@ -14,7 +21,19 @@ export function useNexusOnboarding() {
     setLoading(true);
 
     try {
-      await nexus.initialize(walletClient.transport as any);
+      const provider: NexusProvider = {
+        request: walletClient.transport.request,
+        on: <T extends string>(event: T, listener: (...args: any[]) => void) => {
+          walletClient.transport.on?.(event, listener);
+          return provider;
+        },
+        removeListener: <T extends string>(event: T, listener: (...args: any[]) => void) => {
+          walletClient.transport.removeListener?.(event, listener);
+          return provider;
+        },
+      };
+
+      await nexus.initialize(provider);
 
       // Example onboarding action — bridge $10 USDC to Polygon
       const result = await nexus.bridge({
