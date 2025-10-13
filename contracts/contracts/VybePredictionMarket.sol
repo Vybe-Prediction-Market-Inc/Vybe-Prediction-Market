@@ -132,18 +132,20 @@ contract VybePredictionMarket is Ownable, ReentrancyGuard {
         uint256 pot = m.yesPool + m.noPool;
         if (pot == 0) {
             // Nothing bet; nothing to payout.
-            require(false, "no funds available for redemption");
+            revert("empty pot");
         }
 
         if (m.outcomeYes) {
             uint256 user = m.yesShares[msg.sender];
             require(user > 0, "no winning shares");
+            require(m.yesPool > 0, "no YES bets");
             // Payout = user / yesPool * pot
             payout = (user * pot) / m.yesPool;
             m.yesShares[msg.sender] = 0;
         } else {
             uint256 user = m.noShares[msg.sender];
             require(user > 0, "no winning shares");
+            require(m.noPool > 0, "no NO bets");
             payout = (user * pot) / m.noPool;
             m.noShares[msg.sender] = 0;
         }

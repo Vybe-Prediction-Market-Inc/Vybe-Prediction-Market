@@ -4,6 +4,20 @@ import { ethers } from "ethers";
 
 dotenv.config();
 
+const SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token";
+
+async function fetchClientCredentialsToken(clientId, clientSecret) {
+    const body = new URLSearchParams({
+        grant_type: "client_credentials",
+        client_id: clientId,
+        client_secret: clientSecret,
+    });
+    const resp = await axios.post(SPOTIFY_TOKEN_URL, body, {
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    });
+    return resp.data.access_token;
+}
+
 async function getSpotifyToken() {
     // If a pre-fetched access token is provided, prefer it (faster for demos)
     if (process.env.SPOTIFY_ACCESS_TOKEN) {
@@ -19,23 +33,7 @@ async function getSpotifyToken() {
         );
     }
 
-    const data = new URLSearchParams({
-        grant_type: "client_credentials",
-        client_id: clientId,
-        client_secret: clientSecret,
-    });
-
-    const response = await axios.post(
-        "https://accounts.spotify.com/api/token",
-        data,
-        {
-            headers: {
-                "Content-Type": "application/x-www-form-urlencoded",
-            },
-        }
-    );
-
-    return response.data.access_token;
+    return fetchClientCredentialsToken(clientId, clientSecret);
 }
 
 async function fetchSpotifyStreams(trackId) {
@@ -59,21 +57,10 @@ async function fetchSpotifyStreams(trackId) {
         const hadAccessToken = !!process.env.SPOTIFY_ACCESS_TOKEN;
         if (status === 401 && hasClientCreds && hadAccessToken) {
             // Fallback: fetch a fresh token via client credentials and retry once
-            const data = new URLSearchParams({
-                grant_type: "client_credentials",
-                client_id: process.env.SPOTIFY_CLIENT_ID,
-                client_secret: process.env.SPOTIFY_CLIENT_SECRET,
-            });
-            const resp = await axios.post(
-                "https://accounts.spotify.com/api/token",
-                data,
-                {
-                    headers: {
-                        "Content-Type": "application/x-www-form-urlencoded",
-                    },
-                }
+            token = await fetchClientCredentialsToken(
+                process.env.SPOTIFY_CLIENT_ID,
+                process.env.SPOTIFY_CLIENT_SECRET
             );
-            token = resp.data.access_token;
             const res2 = await tryFetch(token);
             const popularity = res2.data.popularity;
             console.log(
