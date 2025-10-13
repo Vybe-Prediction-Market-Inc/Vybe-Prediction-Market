@@ -32,16 +32,25 @@ export default function ExplorePage() {
         });
 
         const total = Number(count);
-        const fetched: any[] = [];
+        if (total === 0) {
+          setMarkets([]);
+          return;
+        }
 
-        for (let i = 1; i <= total; i++) {
-          const result = await client.readContract({
+        // Build array of promises for all markets
+        const promises = Array.from({ length: total }, (_, i) =>
+          client.readContract({
             address: VYBE_CONTRACT_ADDRESS,
             abi: VYBE_CONTRACT_ABI,
             functionName: 'getMarket',
-            args: [BigInt(i)],
-          }) as MarketTuple;
+            args: [BigInt(i + 1)],
+          }) as Promise<MarketTuple>
+        );
 
+        // Fetch all markets concurrently
+        const results = await Promise.all(promises);
+
+        const fetched = results.map((result, i) => {
           const [
             question,
             trackId,
@@ -53,8 +62,8 @@ export default function ExplorePage() {
             noPool,
           ] = result;
 
-          fetched.push({
-            id: i,
+          return {
+            id: i + 1,
             question,
             trackId,
             threshold: Number(threshold),
@@ -63,8 +72,8 @@ export default function ExplorePage() {
             outcomeYes,
             yesPool: Number(yesPool),
             noPool: Number(noPool),
-          });
-        }
+          };
+        });
 
         setMarkets(fetched);
       } catch (err) {

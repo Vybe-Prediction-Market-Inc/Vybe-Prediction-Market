@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { WagmiProvider } from 'wagmi';
 import { getDefaultConfig, RainbowKitProvider } from '@rainbow-me/rainbowkit';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { mainnet, base, localhost } from 'wagmi/chains';
+import { mainnet, base } from 'wagmi/chains';
 import '@rainbow-me/rainbowkit/styles.css';
 import { hardhat } from 'wagmi/chains';
 import CustomWalletButton from '@/components/CustomWalletButton';
