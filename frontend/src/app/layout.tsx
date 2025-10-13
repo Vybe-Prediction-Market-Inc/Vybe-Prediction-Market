@@ -7,12 +7,13 @@ import { getDefaultConfig, RainbowKitProvider } from '@rainbow-me/rainbowkit';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { mainnet, base } from 'wagmi/chains';
 import '@rainbow-me/rainbowkit/styles.css';
+import { hardhat } from 'wagmi/chains';
 import CustomWalletButton from '@/components/CustomWalletButton';
 
 const wagmiConfig = getDefaultConfig({
   appName: 'Vybe Prediction Market',
   projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID!,
-  chains: [mainnet, base],
+  chains: [mainnet, base, hardhat],
   ssr: true,
 });
 

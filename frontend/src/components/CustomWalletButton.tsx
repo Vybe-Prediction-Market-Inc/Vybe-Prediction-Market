@@ -1,32 +1,71 @@
 "use client";
 
-import { useRef } from "react";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 
 export default function CustomWalletButton() {
-  const hostRef = useRef<HTMLDivElement>(null);
-
-  const handleClick = () => {
-    const realButton = hostRef.current?.querySelector("button");
-    realButton?.click();
-  };
-
   return (
-    <div className="relative inline-block">
-      <div
-        ref={hostRef}
-        className="absolute inset-0 opacity-0 pointer-events-none"
-        aria-hidden="true"
-      >
-        <ConnectButton />
-      </div>
+    <ConnectButton.Custom>
+      {({
+        account,
+        chain,
+        openAccountModal,
+        openChainModal,
+        openConnectModal,
+        mounted,
+      }) => {
+        const ready = mounted;
+        const connected = ready && account && chain;
 
-      <button
-        onClick={handleClick}
-        className="btn btn-primary"
-      >
-        Connect Wallet
-      </button>
-    </div>
+        if (!connected) {
+          return (
+            <button onClick={openConnectModal} className="btn btn-primary">
+              Connect Wallet
+            </button>
+          );
+        }
+
+        return (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={openChainModal}
+              className="flex items-center gap-1 rounded-lg bg-[var(--bg)] border px-3 py-1 hover:border-[var(--brand)] transition"
+              type="button"
+            >
+              {chain.hasIcon && (
+                <div
+                  style={{
+                    background: chain.iconBackground,
+                    width: 18,
+                    height: 18,
+                    borderRadius: 999,
+                    overflow: "hidden",
+                  }}
+                >
+                  {chain.iconUrl && (
+                    <img
+                      alt={chain.name ?? "Chain icon"}
+                      src={chain.iconUrl}
+                      style={{ width: 18, height: 18 }}
+                    />
+                  )}
+                </div>
+              )}
+              <span>{chain.name}</span>
+            </button>
+
+            <button
+              onClick={openAccountModal}
+              className="flex items-center gap-2 rounded-lg bg-[var(--bg)] border px-3 py-1 hover:border-[var(--brand)] transition"
+              type="button"
+            >
+              {account.displayBalance ? (
+                <span>{account.displayBalance}</span>
+              ) : null}
+              <span>{account.displayName}</span>
+            </button>
+          </div>
+        );
+      }}
+    </ConnectButton.Custom>
   );
 }
