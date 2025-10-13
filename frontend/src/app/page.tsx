@@ -13,7 +13,6 @@ export default function HomePage() {
         </p>
         <div className="mt-6 flex gap-3">
           <Link href="/explore" className="btn btn-primary">Explore Markets</Link>
-          <Link href="/auth" className="btn btn-ghost">Sign in</Link>
         </div>
       </section>
 
