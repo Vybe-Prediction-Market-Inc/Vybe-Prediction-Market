@@ -3,6 +3,9 @@
     "version": "1.0.0",
     "main": "index.js",
     "scripts": {
+        "node": "hardhat node --port 8545 --hostname 127.0.0.1",
+        "e2e:spotify": "hardhat run scripts/e2e_spotify_demo.js",
+        "e2e": "hardhat run scripts/e2e_demo.js --network localhost",
         "test": "echo \"Error: no test specified\" && exit 1"
     },
     "keywords": [],

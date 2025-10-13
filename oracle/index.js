@@ -5,11 +5,18 @@ import { ethers } from "ethers";
 dotenv.config();
 
 async function getSpotifyToken() {
+    // If a pre-fetched access token is provided, prefer it (faster for demos)
+    if (process.env.SPOTIFY_ACCESS_TOKEN) {
+        return process.env.SPOTIFY_ACCESS_TOKEN;
+    }
+
     const clientId = process.env.SPOTIFY_CLIENT_ID;
     const clientSecret = process.env.SPOTIFY_CLIENT_SECRET;
 
     if (!clientId || !clientSecret) {
-        throw new Error("Missing SPOTIFY_CLIENT_ID or SPOTIFY_CLIENT_SECRET");
+        throw new Error(
+            "Missing SPOTIFY_ACCESS_TOKEN or SPOTIFY_CLIENT_ID/SECRET"
+        );
     }
 
     const data = new URLSearchParams({
@@ -32,16 +39,50 @@ async function getSpotifyToken() {
 }
 
 async function fetchSpotifyStreams(trackId) {
-    const token = await getSpotifyToken();
-    const res = await axios.get(
-        `https://api.spotify.com/v1/tracks/${trackId}`,
-        {
+    const tryFetch = async (token) =>
+        axios.get(`https://api.spotify.com/v1/tracks/${trackId}`, {
             headers: { Authorization: `Bearer ${token}` },
+        });
+
+    // First attempt using provided token or client credentials
+    let token = await getSpotifyToken();
+    try {
+        const res = await tryFetch(token);
+        const popularity = res.data.popularity;
+        console.log(`Track ${trackId} has ${popularity} popularity`);
+        return popularity;
+    } catch (err) {
+        const status = err?.response?.status;
+        const hasClientCreds = !!(
+            process.env.SPOTIFY_CLIENT_ID && process.env.SPOTIFY_CLIENT_SECRET
+        );
+        const hadAccessToken = !!process.env.SPOTIFY_ACCESS_TOKEN;
+        if (status === 401 && hasClientCreds && hadAccessToken) {
+            // Fallback: fetch a fresh token via client credentials and retry once
+            const data = new URLSearchParams({
+                grant_type: "client_credentials",
+                client_id: process.env.SPOTIFY_CLIENT_ID,
+                client_secret: process.env.SPOTIFY_CLIENT_SECRET,
+            });
+            const resp = await axios.post(
+                "https://accounts.spotify.com/api/token",
+                data,
+                {
+                    headers: {
+                        "Content-Type": "application/x-www-form-urlencoded",
+                    },
+                }
+            );
+            token = resp.data.access_token;
+            const res2 = await tryFetch(token);
+            const popularity = res2.data.popularity;
+            console.log(
+                `Track ${trackId} has ${popularity} popularity (refreshed token)`
+            );
+            return popularity;
         }
-    );
-    const streams = res.data.popularity; // Simplified proxy for hackathon
-    console.log(`Track ${trackId} has ${streams} popularity`);
-    return streams;
+        throw err;
+    }
 }
 
 async function postToOracleContract(marketAddress, value) {
@@ -59,13 +100,23 @@ async function postToOracleContract(marketAddress, value) {
     console.log(`Resolving market ${marketId} with observed=${value}...`);
     const tx = await contract.resolveMarket(marketId, value);
     const rcpt = await tx.wait();
-    console.log("Resolved in tx", rcpt.transactionHash);
+    console.log("Resolved in tx", rcpt.hash);
 }
 
 async function main() {
     const trackId = process.env.TRACK_ID || "4uLU6hMCjMI75M1A2tKUQC";
     const marketAddress = process.env.MARKET_ADDRESS;
     if (!marketAddress) throw new Error("Missing MARKET_ADDRESS");
+
+    const override = process.env.OBSERVED_OVERRIDE;
+    if (override !== undefined) {
+        console.log(
+            `Using OBSERVED_OVERRIDE=${override}, skipping Spotify fetch`
+        );
+        await postToOracleContract(marketAddress, Number(override));
+        return;
+    }
+
     const popularity = await fetchSpotifyStreams(trackId);
     await postToOracleContract(marketAddress, popularity);
 }
