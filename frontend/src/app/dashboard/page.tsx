@@ -13,7 +13,7 @@ export default function DashboardPage() {
       </section>
 
       <section className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {[1,2,3].map(i => (
+        {[1, 2, 3].map(i => (
           <div key={i} className="rounded-xl border border-white/10 p-4 bg-white/5">
             <div className="text-sm muted">Widget #{i}</div>
             <div className="mt-1">Placeholder content</div>

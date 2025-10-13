@@ -20,7 +20,7 @@ export default function HomePage() {
       <section className="space-y-4">
         <h2 className="h2">Featured Markets</h2>
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[1,2,3,4,5,6].map(i => (
+          {[1, 2, 3, 4, 5, 6].map(i => (
             <Link key={i} href={`/event?slug=market-${i}`} className="card hover:border-white/20 transition">
               <div className="card-body">
                 <div className="text-sm muted">Event #{i}</div>
