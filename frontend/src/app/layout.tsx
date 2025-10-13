@@ -3,10 +3,11 @@
 import './globals.css';
 import Link from 'next/link';
 import { WagmiProvider } from 'wagmi';
-import { getDefaultConfig, RainbowKitProvider, ConnectButton } from '@rainbow-me/rainbowkit';
+import { getDefaultConfig, RainbowKitProvider } from '@rainbow-me/rainbowkit';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { mainnet, base } from 'wagmi/chains';
 import '@rainbow-me/rainbowkit/styles.css';
+import CustomWalletButton from '@/components/CustomWalletButton';
 
 const wagmiConfig = getDefaultConfig({
   appName: 'Vybe Prediction Market',
@@ -49,7 +50,7 @@ function NavBar() {
 
         {/* Right: Wallet */}
         <div className="flex items-center gap-3">
-          <ConnectButton />
+          <CustomWalletButton />
         </div>
       </nav>
     </header>
@@ -64,7 +65,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <QueryClientProvider client={queryClient}>
             <RainbowKitProvider>
               <NavBar />
-              {/* push content below fixed navbar */}
               <main className="pt-20">{children}</main>
             </RainbowKitProvider>
           </QueryClientProvider>
