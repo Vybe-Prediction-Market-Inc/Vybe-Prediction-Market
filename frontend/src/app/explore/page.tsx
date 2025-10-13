@@ -16,8 +16,20 @@ type MarketTuple = [
   bigint    // noPool
 ];
 
+interface Market {
+  id: number;
+  question: string;
+  trackId: string;
+  threshold: number;
+  deadline: number;
+  resolved: boolean;
+  outcomeYes: boolean;
+  yesPool: number;
+  noPool: number;
+}
+
 export default function ExplorePage() {
-  const [markets, setMarkets] = useState<any[]>([]);
+  const [markets, setMarkets] = useState<Market[]>([]);
   const client = usePublicClient();
 
   useEffect(() => {
@@ -37,7 +49,6 @@ export default function ExplorePage() {
           return;
         }
 
-        // Build array of promises for all markets
         const promises = Array.from({ length: total }, (_, i) =>
           client.readContract({
             address: VYBE_CONTRACT_ADDRESS,
@@ -47,10 +58,9 @@ export default function ExplorePage() {
           }) as Promise<MarketTuple>
         );
 
-        // Fetch all markets concurrently
         const results = await Promise.all(promises);
 
-        const fetched = results.map((result, i) => {
+        const fetched: Market[] = results.map((result, i) => {
           const [
             question,
             trackId,
