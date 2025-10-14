@@ -122,14 +122,14 @@ export default function EventPage() {
               disabled={loading}
               className="btn btn-primary rounded-full"
             >
-              {loading ? 'Processing...' : 'Bet Yes (100 ETH)'}
+              {loading ? 'Processing...' : 'Bet Yes (0.1 ETH)'}
             </button>
             <button
               onClick={() => handleBet(false)}
               disabled={loading}
               className="btn btn-ghost rounded-full"
             >
-              {loading ? 'Processing...' : 'Bet No (100 ETH)'}
+              {loading ? 'Processing...' : 'Bet No (0.1 ETH)'}
             </button>
           </div>
         </div>
