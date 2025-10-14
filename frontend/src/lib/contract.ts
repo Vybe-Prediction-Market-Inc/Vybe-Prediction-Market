@@ -12,6 +12,37 @@ export const VYBE_CONTRACT_ABI: Abi = [
     outputs: [{ name: "", type: "uint256" }],
   },
   {
+  type: "function",
+  name: "buyYes",
+  stateMutability: "payable",
+  inputs: [{ name: "marketId", type: "uint256" }],
+  outputs: [],
+  },
+  {
+  type: "function",
+  name: "buyNo",
+  stateMutability: "payable",
+  inputs: [{ name: "marketId", type: "uint256" }],
+  outputs: [],
+  },
+  {
+  type: "function",
+  name: "getUserBets",
+  stateMutability: "view",
+  inputs: [{ name: "_user", type: "address" }],
+  outputs: [
+    {
+      components: [
+        { name: "marketId", type: "uint256" },
+        { name: "betYes", type: "bool" },
+        { name: "amount", type: "uint256" },
+        { name: "claimed", type: "bool" },
+      ],
+      type: "tuple[]",
+    },
+  ],
+  },
+  {
     type: "function",
     name: "getMarket",
     stateMutability: "view",

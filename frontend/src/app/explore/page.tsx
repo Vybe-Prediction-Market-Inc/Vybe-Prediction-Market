@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { usePublicClient } from 'wagmi';
+import Link from 'next/link';
 import { VYBE_CONTRACT_ABI, VYBE_CONTRACT_ADDRESS } from '@/lib/contract';
 import SearchBar from '@/components/SearchBar';
 
@@ -104,12 +105,14 @@ export default function ExplorePage() {
       ) : (
         <div className="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {markets.map((market) => (
+            <Link href={`/event?id=${market.id}`}>
             <div key={market.id} className="card hover:border-[var(--brand)] transition">
               <div className="card-body">
                 <h2 className="h2 mb-2">{market.question}</h2>
                 <p className="muted text-sm mb-4">Track ID: {market.trackId}</p>
               </div>
             </div>
+            </Link>
           ))}
         </div>
       )}
