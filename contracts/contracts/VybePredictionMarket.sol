@@ -28,12 +28,23 @@ contract VybePredictionMarket is Ownable, ReentrancyGuard {
         mapping(address => uint256) noShares;
     }
 
+    struct BetInfo {
+        uint256 marketId;
+        bool betYes;
+        uint256 amount;
+        bool claimed;
+    }
+
     // Admins
     address public oracle; // Account allowed to resolve markets
 
     // Markets
     uint256 public marketCount;
     mapping(uint256 => Market) private markets;
+
+    // User tracking
+    mapping(address => uint256[]) private userMarketIds; // list of market IDs per user
+    mapping(address => mapping(uint256 => BetInfo)) private userBets; // user → marketId → BetInfo
 
     // Events
     event MarketCreated(
@@ -101,11 +112,21 @@ contract VybePredictionMarket is Ownable, ReentrancyGuard {
 
         if (yes) {
             m.yesPool += msg.value;
-            m.yesShares[msg.sender] += msg.value; // shares = ETH amount (parimutuel)
+            m.yesShares[msg.sender] += msg.value;
         } else {
             m.noPool += msg.value;
             m.noShares[msg.sender] += msg.value;
         }
+
+        // Record user bet (for dashboard tracking)
+        BetInfo storage b = userBets[msg.sender][marketId];
+        if (b.amount == 0) {
+            userMarketIds[msg.sender].push(marketId);
+            b.marketId = marketId;
+            b.betYes = yes;
+        }
+        b.amount += msg.value;
+
         emit BetPlaced(marketId, msg.sender, yes, msg.value);
     }
 
@@ -122,7 +143,7 @@ contract VybePredictionMarket is Ownable, ReentrancyGuard {
         emit Resolved(marketId, m.outcomeYes, m.yesPool, m.noPool);
     }
 
-    // Redeem winnings after resolution. Can be called once per user per market side (since it zeroes shares).
+    // Redeem winnings after resolution.
     function redeem(uint256 marketId) external nonReentrant {
         require(marketId > 0 && marketId <= marketCount, "invalid market");
         Market storage m = markets[marketId];
@@ -130,16 +151,12 @@ contract VybePredictionMarket is Ownable, ReentrancyGuard {
 
         uint256 payout;
         uint256 pot = m.yesPool + m.noPool;
-        if (pot == 0) {
-            // Nothing bet; nothing to payout.
-            revert("empty pot");
-        }
+        if (pot == 0) revert("empty pot");
 
         if (m.outcomeYes) {
             uint256 user = m.yesShares[msg.sender];
             require(user > 0, "no winning shares");
             require(m.yesPool > 0, "no YES bets");
-            // Payout = user / yesPool * pot
             payout = (user * pot) / m.yesPool;
             m.yesShares[msg.sender] = 0;
         } else {
@@ -150,13 +167,17 @@ contract VybePredictionMarket is Ownable, ReentrancyGuard {
             m.noShares[msg.sender] = 0;
         }
 
+        // Mark claimed for dashboard
+        userBets[msg.sender][marketId].claimed = true;
+
         // Transfer payout
         (bool ok, ) = msg.sender.call{value: payout}("");
         require(ok, "transfer failed");
         emit Redeemed(marketId, msg.sender, payout);
     }
 
-    // Views
+    // --- Views ---
+
     function getMarket(uint256 marketId)
         external
         view
@@ -185,10 +206,23 @@ contract VybePredictionMarket is Ownable, ReentrancyGuard {
         );
     }
 
-    function getUserShares(uint256 marketId, address user) external view returns (uint256 yesShares, uint256 noShares) {
+    function getUserShares(uint256 marketId, address user)
+        external
+        view
+        returns (uint256 yesShares, uint256 noShares)
+    {
         require(marketId > 0 && marketId <= marketCount, "invalid market");
         Market storage m = markets[marketId];
         return (m.yesShares[user], m.noShares[user]);
+    }
+
+    function getUserBets(address _user) external view returns (BetInfo[] memory) {
+        uint256[] memory ids = userMarketIds[_user];
+        BetInfo[] memory result = new BetInfo[](ids.length);
+        for (uint256 i = 0; i < ids.length; i++) {
+            result[i] = userBets[_user][ids[i]];
+        }
+        return result;
     }
 
     receive() external payable {}
