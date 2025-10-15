@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { usePublicClient, useWriteContract } from 'wagmi';
 import { parseEther, formatEther } from 'viem';
@@ -29,7 +29,7 @@ type MarketTuple = [
   bigint
 ];
 
-export default function EventPage() {
+function EventPageInner() {
   const search = useSearchParams();
   const id = Number(search.get('id') ?? 1);
   const client = usePublicClient();
@@ -135,5 +135,13 @@ export default function EventPage() {
         </div>
       </section>
     </div>
+  );
+}
+
+export default function EventPage() {
+  return (
+    <Suspense fallback={<p className="p-8 text-center">Loading…</p>}>
+      <EventPageInner />
+    </Suspense>
   );
 }
