@@ -226,4 +226,11 @@ contract VybePredictionMarket is Ownable, ReentrancyGuard {
     }
 
     receive() external payable {}
+
+    // Gracefully handle unknown function selectors (e.g., interface probes via eth_call).
+    // Do not accept ETH with calldata to avoid locking funds unintentionally.
+    fallback() external payable {
+        require(msg.value == 0, "no direct ETH with data");
+        // no-op
+    }
 }
