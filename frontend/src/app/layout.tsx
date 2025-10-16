@@ -5,15 +5,19 @@ import Link from 'next/link';
 import { WagmiProvider } from 'wagmi';
 import { getDefaultConfig, RainbowKitProvider } from '@rainbow-me/rainbowkit';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { mainnet, base } from 'wagmi/chains';
-import '@rainbow-me/rainbowkit/styles.css';
 import { hardhat } from 'wagmi/chains';
+import { http } from 'viem';
+import '@rainbow-me/rainbowkit/styles.css';
 import CustomWalletButton from '@/components/CustomWalletButton';
 
 const wagmiConfig = getDefaultConfig({
   appName: 'Vybe Prediction Market',
   projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID!,
-  chains: [mainnet, base, hardhat],
+  // Force local Hardhat chain for both reads & writes in dev
+  chains: [hardhat],
+  transports: {
+    [hardhat.id]: http(process.env.NEXT_PUBLIC_RPC_URL || 'http://127.0.0.1:8545'),
+  },
   ssr: true,
 });
 
@@ -64,7 +68,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="min-h-screen bg-[var(--bg)] text-[var(--fg)]">
         <WagmiProvider config={wagmiConfig}>
           <QueryClientProvider client={queryClient}>
-            <RainbowKitProvider>
+            <RainbowKitProvider initialChain={hardhat}>
               <NavBar />
               <main className="pt-20">{children}</main>
             </RainbowKitProvider>
