@@ -11,6 +11,7 @@ interface Bet {
   betYes: boolean;
   amount: number;
   claimed: boolean;
+  question?: string;
 }
 
 export default function DashboardPage() {
@@ -34,13 +35,35 @@ export default function DashboardPage() {
             functionName: 'getUserBets',
             args: [address],
           });
-          for (const b of result as any[]) {
+
+          const rows = result as any[];
+          if (!rows || rows.length === 0) continue;
+
+          // Fetch market questions in parallel for this contract
+          const ids = rows.map((b) => Number(b.marketId));
+          const marketReads = ids.map((id) =>
+            client.readContract({
+              address: addr,
+              abi: VYBE_CONTRACT_ABI,
+              functionName: 'getMarket',
+              args: [BigInt(id)],
+            }) as Promise<[
+              string, string, bigint, bigint, boolean, boolean, bigint, bigint
+            ]>
+          );
+          const marketResults = await Promise.allSettled(marketReads);
+
+          for (let i = 0; i < rows.length; i++) {
+            const b = rows[i];
+            const mr = marketResults[i];
+            const question = mr.status === 'fulfilled' ? mr.value[0] : undefined;
             all.push({
               contractAddress: addr,
               marketId: Number(b.marketId),
               betYes: b.betYes,
               amount: Number(b.amount),
               claimed: b.claimed,
+              question,
             });
           }
         }
@@ -70,7 +93,8 @@ export default function DashboardPage() {
         <section className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {bets.map((bet, i) => (
             <a key={i} href={`/event?address=${bet.contractAddress}&id=${bet.marketId}`} className="rounded-xl border border-white/10 p-4 bg-white/5 block hover:border-[var(--brand)]">
-              <div className="text-sm muted">Market #{bet.marketId}</div>
+              <div className="font-medium">{bet.question || `Market #${bet.marketId}`}</div>
+              <div className="text-[10px] text-white/40">Market #{bet.marketId}</div>
               <div className="text-[10px] text-white/40 break-all">{bet.contractAddress}</div>
               <div className="mt-1">
                 <span className={bet.betYes ? "text-green-400" : "text-red-400"}>
