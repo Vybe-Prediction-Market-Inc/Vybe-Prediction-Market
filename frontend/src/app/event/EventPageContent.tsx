@@ -18,6 +18,13 @@ interface Market {
   noPool: number;
 }
 
+interface BetInfo {
+  marketId: number;
+  betYes: boolean;
+  amount: number;
+  claimed: boolean;
+}
+
 type MarketTuple = [
   string,
   string,
@@ -37,6 +44,7 @@ export default function EventPageContent() {
   const { address: connectedAddress, isConnected } = useAccount();
 
   const [market, setMarket] = useState<Market | null>(null);
+  const [userBet, setUserBet] = useState<BetInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const [redeeming, setRedeeming] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -91,6 +99,36 @@ export default function EventPageContent() {
     fetchMarket();
   }, [client, id]);
 
+  // --- Fetch user's bet info (to check if already claimed) ---
+  useEffect(() => {
+    if (!client || !isConnected || !connectedAddress) return;
+
+    const loadUserBet = async () => {
+      try {
+        const result = await client.readContract({
+          address: VYBE_CONTRACT_ADDRESS,
+          abi: VYBE_CONTRACT_ABI,
+          functionName: 'getUserBets',
+          args: [connectedAddress],
+        }) as any[];
+
+        const parsed = result.map((b: any) => ({
+          marketId: Number(b.marketId),
+          betYes: b.betYes,
+          amount: Number(b.amount),
+          claimed: b.claimed,
+        })) as BetInfo[];
+
+        const thisMarketBet = parsed.find((b) => b.marketId === id);
+        if (thisMarketBet) setUserBet(thisMarketBet);
+      } catch (err) {
+        console.error('Error loading user bet:', err);
+      }
+    };
+
+    loadUserBet();
+  }, [client, connectedAddress, id, isConnected]);
+
   // --- Place Bet ---
   const handleBet = async (betYes: boolean) => {
     try {
@@ -103,7 +141,7 @@ export default function EventPageContent() {
       }
 
       if (!client) {
-        setError('Client is not available.');
+        setError('Client not initialized.');
         return;
       }
 
@@ -133,7 +171,7 @@ export default function EventPageContent() {
     try {
       setRedeeming(true);
       if (!client) {
-        setError('Client is not available.');
+        setError('Client not initialized.');
         return;
       }
       const sim = await client.simulateContract({
@@ -146,7 +184,8 @@ export default function EventPageContent() {
 
       const tx = await writeContractAsync(sim.request);
       console.log('Redeem tx hash:', tx);
-      alert('🎉 Winnings claimed successfully!');
+      alert('Winnings claimed successfully!');
+      setUserBet((prev) => (prev ? { ...prev, claimed: true } : prev));
     } catch (err) {
       console.error('Redeem failed:', err);
       setError((err as Error)?.message ?? 'Redeem transaction failed');
@@ -164,6 +203,8 @@ export default function EventPageContent() {
     );
 
   if (!market) return <p className="p-8 text-center">Loading market...</p>;
+
+  const alreadyClaimed = userBet?.claimed ?? false;
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8 space-y-6">
@@ -195,15 +236,22 @@ export default function EventPageContent() {
             </button>
           </div>
 
+          {/* Claim Winnings Button (visible only after market is resolved) */}
           {market.resolved && (
             <div className="mt-8 text-center">
-              <button
-                onClick={handleRedeem}
-                disabled={!isConnected || redeeming}
-                className="btn btn-success rounded-full"
-              >
-                {redeeming ? 'Claiming...' : '🎉 Claim Winnings'}
-              </button>
+              {alreadyClaimed ? (
+                <div className="text-green-400 text-sm font-semibold">
+                  Already Claimed
+                </div>
+              ) : (
+                <button
+                  onClick={handleRedeem}
+                  disabled={!isConnected || redeeming}
+                  className="btn btn-success rounded-full"
+                >
+                  {redeeming ? 'Claiming...' : 'Claim Winnings'}
+                </button>
+              )}
             </div>
           )}
         </div>
