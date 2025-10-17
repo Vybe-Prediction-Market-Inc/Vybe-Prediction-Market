@@ -220,8 +220,8 @@ export default function EventPage() {
             Tips:
             <ul className="list-disc list-inside">
               <li>Ensure Hardhat node is running on {process.env.NEXT_PUBLIC_RPC_URL || 'http://127.0.0.1:8545'}</li>
-              <li>Redeploy and copy the address to NEXT_PUBLIC_MARKET_ADDRESS</li>
-              <li>Refresh the app after redeploying the node (cache might be stale)</li>
+              <li>If no address is in the URL, set NEXT_PUBLIC_DEPLOYER_ADDRESS[ES] so the app can discover deployments</li>
+              <li>Refresh the app after redeploying the node or contracts to clear stale client cache</li>
             </ul>
           </div>
         </div>

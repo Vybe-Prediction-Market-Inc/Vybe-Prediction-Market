@@ -21,7 +21,10 @@ export async function GET(req: Request) {
     if (!discovered || discovered.length === 0) {
       return NextResponse.json({ error: "No contract address provided and none discoverable. Set NEXT_PUBLIC_DEPLOYER_ADDRESS[ES] or pass ?address=0x..." }, { status: 400 });
     }
-    address = discovered[discovered.length - 1];
+    if (discovered.length > 1) {
+      return NextResponse.json({ error: `Multiple Vybe contracts discovered (${discovered.length}). Pass ?address=0x... to disambiguate.` }, { status: 400 });
+    }
+    address = discovered[0];
   }
 
   const [

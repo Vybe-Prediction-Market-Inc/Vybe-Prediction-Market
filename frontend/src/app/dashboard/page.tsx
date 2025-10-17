@@ -18,6 +18,7 @@ export default function DashboardPage() {
   const { address } = useAccount();
   const client = usePublicClient();
   const [bets, setBets] = useState<Bet[]>([]);
+  const shortAddr = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
   useEffect(() => {
     if (!client || !address) return;
@@ -91,11 +92,10 @@ export default function DashboardPage() {
         <p className="muted">No bets found.</p>
       ) : (
         <section className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {bets.map((bet, i) => (
-            <a key={i} href={`/event?address=${bet.contractAddress}&id=${bet.marketId}`} className="rounded-xl border border-white/10 p-4 bg-white/5 block hover:border-[var(--brand)]">
+          {bets.map((bet) => (
+            <a key={`${bet.contractAddress}-${bet.marketId}`} href={`/event?address=${bet.contractAddress}&id=${bet.marketId}`} className="rounded-xl border border-white/10 p-4 bg-white/5 block hover:border-[var(--brand)]" title={bet.contractAddress}>
               <div className="font-medium">{bet.question || `Market #${bet.marketId}`}</div>
-              <div className="text-[10px] text-white/40">Market #{bet.marketId}</div>
-              <div className="text-[10px] text-white/40 break-all">{bet.contractAddress}</div>
+                <div className="text-[10px] text-white/40">Market #{bet.marketId} · {shortAddr(bet.contractAddress)}</div>
               <div className="mt-1">
                 <span className={bet.betYes ? "text-green-400" : "text-red-400"}>
                   {bet.betYes ? "Yes" : "No"}

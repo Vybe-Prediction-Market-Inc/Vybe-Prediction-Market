@@ -29,6 +29,7 @@ interface Market {
 
 export default function ExplorePage() {
   const { markets, loading, error } = useMarkets();
+  const shortAddr = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
   return (
     <div className="px-4 py-8 max-w-6xl mx-auto space-y-6">
@@ -50,6 +51,7 @@ export default function ExplorePage() {
             >
               <div className="card-body">
                 <h2 className="h2 mb-2">{market.question}</h2>
+                <p className="muted text-xs mb-1">Market #{market.marketId} · {shortAddr(market.contractAddress)}</p>
                 <p className="muted text-sm mb-1">Track ID: {market.trackId}</p>
               </div>
             </Link>
