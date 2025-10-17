@@ -219,18 +219,30 @@ export default function EventPageContent() {
             <div>No Pool: {formatEther(BigInt(market.noPool))} ETH</div>
           </div>
 
+          {/* Bet buttons */}
           <div className="mt-6 grid sm:grid-cols-2 gap-4">
             <button
               onClick={() => handleBet(true)}
-              disabled={loading || market.resolved}
-              className="btn btn-primary rounded-full"
+              disabled={
+                loading ||
+                market.resolved ||
+                (!!userBet && userBet.betYes === false)
+              }
+              className={`btn rounded-full ${userBet?.betYes === true ? 'btn-primary' : 'btn-outline'
+                }`}
             >
               {loading ? 'Processing...' : 'Bet Yes (0.1 ETH)'}
             </button>
+
             <button
               onClick={() => handleBet(false)}
-              disabled={loading || market.resolved}
-              className="btn btn-ghost rounded-full"
+              disabled={
+                loading ||
+                market.resolved ||
+                (!!userBet && userBet.betYes === true)
+              }
+              className={`btn rounded-full ${userBet?.betYes === false ? 'btn-ghost' : 'btn-outline'
+                }`}
             >
               {loading ? 'Processing...' : 'Bet No (0.1 ETH)'}
             </button>
