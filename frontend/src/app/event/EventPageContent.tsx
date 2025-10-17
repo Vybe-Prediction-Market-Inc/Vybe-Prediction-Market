@@ -232,11 +232,19 @@ export default function EventPage() {
 
   if (!market) return <p className="p-8 text-center">Loading market...</p>;
 
+  const nowSec = Math.floor(Date.now() / 1000);
+  const isClosed = market.resolved || market.deadline <= nowSec;
+
   return (
     <div className="mx-auto max-w-4xl px-4 py-8 space-y-6">
       <section className="card">
         <div className="card-body">
-          <div className="text-sm muted">Market #{id}</div>
+          <div className="text-sm muted flex items-center gap-2">
+            <span>Market #{id}</span>
+            {isClosed && (
+              <span className="inline-flex items-center rounded-full bg-white/10 text-white/70 text-[10px] px-2 py-0.5">Closed</span>
+            )}
+          </div>
           <h1 className="h2 mt-1">{market.question}</h1>
           <p className="mt-2 muted">Track ID: {market.trackId}</p>
           {addr && (
@@ -251,17 +259,17 @@ export default function EventPage() {
           <div className="mt-6 grid sm:grid-cols-2 gap-4">
             <button
               onClick={() => handleBet(true)}
-              disabled={loading}
+              disabled={loading || isClosed}
               className="btn btn-primary rounded-full"
             >
-              {loading ? 'Processing...' : 'Bet Yes (0.1 ETH)'}
+              {loading ? 'Processing...' : (isClosed ? 'Betting closed' : 'Bet Yes (0.1 ETH)')}
             </button>
             <button
               onClick={() => handleBet(false)}
-              disabled={loading}
+              disabled={loading || isClosed}
               className="btn btn-ghost rounded-full"
             >
-              {loading ? 'Processing...' : 'Bet No (0.1 ETH)'}
+              {loading ? 'Processing...' : (isClosed ? 'Betting closed' : 'Bet No (0.1 ETH)')}
             </button>
             <button
               onClick={handleRedeem}
