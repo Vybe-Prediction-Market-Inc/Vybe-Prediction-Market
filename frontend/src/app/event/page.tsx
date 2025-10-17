@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useAccount, usePublicClient, useWriteContract } from 'wagmi';
 import { parseEther, formatEther } from 'viem';
-import { VYBE_CONTRACT_ABI, VYBE_CONTRACT_ADDRESS } from '@/lib/contract';
+import { VYBE_CONTRACT_ABI, discoverVybeContractsFromDeployers } from '@/lib/contract';
 
 interface Market {
   id: number;
@@ -32,6 +32,7 @@ type MarketTuple = [
 export default function EventPage() {
   const search = useSearchParams();
   const id = Number(search.get('id') ?? 1);
+  const fromUrl = search.get('address') as `0x${string}` | null;
   const client = usePublicClient();
   const { writeContractAsync } = useWriteContract();
   const { address: connectedAddress, isConnected } = useAccount();
@@ -39,6 +40,26 @@ export default function EventPage() {
   const [market, setMarket] = useState<Market | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [addr, setAddr] = useState<`0x${string}` | null>(fromUrl && fromUrl.startsWith('0x') ? fromUrl : null);
+
+  // If no address from URL or env, try to discover from configured deployers
+  useEffect(() => {
+    if (addr || !client) return;
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const discovered = await discoverVybeContractsFromDeployers(client);
+        if (!cancelled && discovered.length > 0) {
+          // pick the most recent (last) discovered contract
+          setAddr(discovered[discovered.length - 1]);
+        }
+      } catch {
+        // ignore
+      }
+    };
+    run();
+    return () => { cancelled = true; };
+  }, [addr, client]);
 
   useEffect(() => {
     if (!client) return;
@@ -47,22 +68,22 @@ export default function EventPage() {
       try {
         setError(null);
         // Preflight checks to avoid `returned no data (0x)`
-        if (!VYBE_CONTRACT_ADDRESS) {
-          setError('Contract address is not set. Define NEXT_PUBLIC_MARKET_ADDRESS in .env');
+        if (!addr) {
+          setError('Contract address not set or discoverable. Provide NEXT_PUBLIC_DEPLOYER_ADDRESS[ES], or open this page with ?address=0x...');
           return;
         }
 
         const chainId = await client.getChainId();
-        console.log('[Event] chainId=', chainId, 'address=', VYBE_CONTRACT_ADDRESS, 'marketId=', id);
+        console.log('[Event] chainId=', chainId, 'address=', addr, 'marketId=', id);
 
-        const bytecode = await client.getBytecode({ address: VYBE_CONTRACT_ADDRESS });
+        const bytecode = await client.getBytecode({ address: addr });
         if (!bytecode || bytecode === '0x') {
-          setError(`No contract code found at ${VYBE_CONTRACT_ADDRESS}. Is the node fresh and was the contract deployed to this chain?`);
+          setError(`No contract code found at ${addr}. Is the node fresh and was the contract deployed to this chain?`);
           return;
         }
 
         const mc = await client.readContract({
-          address: VYBE_CONTRACT_ADDRESS,
+          address: addr,
           abi: VYBE_CONTRACT_ABI,
           functionName: 'marketCount',
           args: [],
@@ -77,7 +98,7 @@ export default function EventPage() {
         }
 
         const result = await client.readContract({
-          address: VYBE_CONTRACT_ADDRESS,
+          address: addr,
           abi: VYBE_CONTRACT_ABI,
           functionName: 'getMarket',
           args: [BigInt(id)],
@@ -112,7 +133,7 @@ export default function EventPage() {
     };
 
     fetchMarket();
-  }, [client, id]);
+  }, [client, id, addr]);
 
   const handleBet = async (betYes: boolean) => {
   try {
@@ -130,8 +151,12 @@ export default function EventPage() {
 
     const functionName = betYes ? 'buyYes' : 'buyNo';
     // Simulate first to surface precise revert reasons and ensure correct account/chain/value
+    if (!addr) {
+      setError('Contract address unavailable.');
+      return;
+    }
     const sim = await client.simulateContract({
-      address: VYBE_CONTRACT_ADDRESS,
+      address: addr as `0x${string}`,
       abi: VYBE_CONTRACT_ABI,
       functionName,
       args: [BigInt(id)],
@@ -150,6 +175,39 @@ export default function EventPage() {
   } finally {
     setLoading(false);
   }
+  };
+
+  const handleRedeem = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      if (!isConnected || !connectedAddress) {
+        setError('Connect your wallet to redeem.');
+        return;
+      }
+      if (!client) {
+        setError('RPC client not ready.');
+        return;
+      }
+      if (!addr) {
+        setError('Contract address unavailable.');
+        return;
+      }
+      const sim = await client.simulateContract({
+        address: addr as `0x${string}`,
+        abi: VYBE_CONTRACT_ABI,
+        functionName: 'redeem',
+        args: [BigInt(id)],
+        account: connectedAddress,
+      });
+      const tx = await writeContractAsync({ ...sim.request });
+      console.log('Redeem tx:', tx);
+    } catch (err) {
+      console.error('Redeem failed:', err);
+      setError((err as Error)?.message ?? 'Redeem failed');
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (error) {
@@ -180,6 +238,9 @@ export default function EventPage() {
           <div className="text-sm muted">Market #{id}</div>
           <h1 className="h2 mt-1">{market.question}</h1>
           <p className="mt-2 muted">Track ID: {market.trackId}</p>
+          {addr && (
+            <p className="mt-1 text-xs text-white/40 break-all">Contract: {addr}</p>
+          )}
 
           <div className="mt-4 text-sm">
             <div>Yes Pool: {formatEther(BigInt(market.yesPool))} ETH</div>
@@ -200,6 +261,13 @@ export default function EventPage() {
               className="btn btn-ghost rounded-full"
             >
               {loading ? 'Processing...' : 'Bet No (0.1 ETH)'}
+            </button>
+            <button
+              onClick={handleRedeem}
+              disabled={loading}
+              className="btn btn-outline rounded-full"
+            >
+              {loading ? 'Processing...' : 'Redeem'}
             </button>
           </div>
         </div>
