@@ -24,8 +24,8 @@ export interface MarketSummary {
   deadline: number;
   resolved: boolean;
   outcomeYes: boolean;
-  yesPool: number;
-  noPool: number;
+  yesPool: bigint;
+  noPool: bigint;
 }
 
 export function useMarkets(pollMs: number = 15000) {
@@ -96,8 +96,8 @@ export function useMarkets(pollMs: number = 15000) {
               deadline: Number(deadline),
               resolved,
               outcomeYes,
-              yesPool: Number(yesPool),
-              noPool: Number(noPool),
+              yesPool: yesPool,
+              noPool: noPool,
             });
           }
         }
