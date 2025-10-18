@@ -11,18 +11,15 @@ contract VybePredictionMarket is Ownable, ReentrancyGuard {
     struct Market {
         // Metadata
         string question; // Human-readable text
-        string trackId;  // Spotify Track ID used by oracle
+        string trackId; // Spotify Track ID used by oracle
         uint256 threshold; // Popularity threshold (0-100 for Spotify popularity)
-        uint256 deadline;  // Timestamp after which trading is closed
-
+        uint256 deadline; // Timestamp after which trading is closed
         // State
         bool resolved;
         bool outcomeYes; // true if observed >= threshold
-
         // Pools and accounting
         uint256 yesPool; // Total ETH on YES side
-        uint256 noPool;  // Total ETH on NO side
-
+        uint256 noPool; // Total ETH on NO side
         // Per-user shares
         mapping(address => uint256) yesShares;
         mapping(address => uint256) noShares;
@@ -54,9 +51,23 @@ contract VybePredictionMarket is Ownable, ReentrancyGuard {
         uint256 threshold,
         uint256 deadline
     );
-    event BetPlaced(uint256 indexed marketId, address indexed user, bool yes, uint256 amount);
-    event Resolved(uint256 indexed marketId, bool outcomeYes, uint256 yesPool, uint256 noPool);
-    event Redeemed(uint256 indexed marketId, address indexed user, uint256 payout);
+    event BetPlaced(
+        uint256 indexed marketId,
+        address indexed user,
+        bool yes,
+        uint256 amount
+    );
+    event Resolved(
+        uint256 indexed marketId,
+        bool outcomeYes,
+        uint256 yesPool,
+        uint256 noPool
+    );
+    event Redeemed(
+        uint256 indexed marketId,
+        address indexed user,
+        uint256 payout
+    );
 
     modifier onlyOracle() {
         require(msg.sender == oracle, "not oracle");
@@ -131,15 +142,30 @@ contract VybePredictionMarket is Ownable, ReentrancyGuard {
     }
 
     // Oracle resolves with an observed value (0-100). Outcome YES if observed >= threshold
-    function resolveMarket(uint256 marketId, uint256 observed) external onlyOracle {
+    function resolveMarket(
+        uint256 marketId,
+        uint256 observed
+    ) external onlyOracle {
         require(marketId > 0 && marketId <= marketCount, "invalid market");
         require(observed <= 100, "observed > 100");
         Market storage m = markets[marketId];
         require(!m.resolved, "already resolved");
         require(block.timestamp >= m.deadline, "before deadline");
 
+        bool outcomeYes = observed >= m.threshold;
+
+        // Edge case: Winning side had zero pool
+        if (outcomeYes && m.yesPool == 0 && m.noPool > 0) {
+            // Nobody bet YES, refund NO side
+            m.outcomeYes = false;
+        } else if (!outcomeYes && m.noPool == 0 && m.yesPool > 0) {
+            // Nobody bet NO, refund YES side
+            m.outcomeYes = true;
+        } else {
+            m.outcomeYes = outcomeYes;
+        }
+
         m.resolved = true;
-        m.outcomeYes = observed >= m.threshold;
         emit Resolved(marketId, m.outcomeYes, m.yesPool, m.noPool);
     }
 
@@ -178,7 +204,9 @@ contract VybePredictionMarket is Ownable, ReentrancyGuard {
 
     // --- Views ---
 
-    function getMarket(uint256 marketId)
+    function getMarket(
+        uint256 marketId
+    )
         external
         view
         returns (
@@ -206,17 +234,18 @@ contract VybePredictionMarket is Ownable, ReentrancyGuard {
         );
     }
 
-    function getUserShares(uint256 marketId, address user)
-        external
-        view
-        returns (uint256 yesShares, uint256 noShares)
-    {
+    function getUserShares(
+        uint256 marketId,
+        address user
+    ) external view returns (uint256 yesShares, uint256 noShares) {
         require(marketId > 0 && marketId <= marketCount, "invalid market");
         Market storage m = markets[marketId];
         return (m.yesShares[user], m.noShares[user]);
     }
 
-    function getUserBets(address _user) external view returns (BetInfo[] memory) {
+    function getUserBets(
+        address _user
+    ) external view returns (BetInfo[] memory) {
         uint256[] memory ids = userMarketIds[_user];
         BetInfo[] memory result = new BetInfo[](ids.length);
         for (uint256 i = 0; i < ids.length; i++) {
