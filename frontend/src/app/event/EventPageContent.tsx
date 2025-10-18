@@ -2,7 +2,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { useAccount, usePublicClient, useWriteContract } from 'wagmi';
 import { parseEther, formatEther } from 'viem';
 import { VYBE_CONTRACT_ABI, discoverVybeContractsFromDeployers } from '@/lib/contract';
@@ -19,6 +19,13 @@ interface Market {
   noPool: bigint;
 }
 
+interface BetInfo {
+  marketId: number;
+  betYes: boolean;
+  amount: bigint;
+  claimed: boolean;
+}
+
 type MarketTuple = [
   string,
   string,
@@ -30,16 +37,19 @@ type MarketTuple = [
   bigint
 ];
 
-export default function EventPage() {
+export default function EventPageContent() {
   const search = useSearchParams();
   const id = Number(search.get('id') ?? 1);
   const fromUrl = search.get('address') as `0x${string}` | null;
+  const router = useRouter();
   const client = usePublicClient();
   const { writeContractAsync } = useWriteContract();
   const { address: connectedAddress, isConnected } = useAccount();
 
   const [market, setMarket] = useState<Market | null>(null);
+  const [userBet, setUserBet] = useState<BetInfo | null>(null);
   const [loading, setLoading] = useState(false);
+  const [redeeming, setRedeeming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [addr, setAddr] = useState<`0x${string}` | null>(fromUrl && fromUrl.startsWith('0x') ? fromUrl : null);
 
@@ -62,6 +72,7 @@ export default function EventPage() {
     return () => { cancelled = true; };
   }, [addr, client]);
 
+  // --- Fetch Market Data ---
   useEffect(() => {
     if (!client) return;
 
@@ -136,51 +147,76 @@ export default function EventPage() {
     fetchMarket();
   }, [client, id, addr]);
 
+  // --- Fetch user's bet info (to check if already claimed) ---
+  useEffect(() => {
+    if (!client || !isConnected || !connectedAddress || !addr) return;
+
+    const loadUserBet = async () => {
+      try {
+        const result = await client.readContract({
+          address: addr,
+          abi: VYBE_CONTRACT_ABI,
+          functionName: 'getUserBets',
+          args: [connectedAddress],
+        }) as any[];
+
+        const parsed = result.map((b: any) => ({
+          marketId: Number(b.marketId),
+          betYes: b.betYes,
+          amount: b.amount as bigint,
+          claimed: b.claimed,
+        })) as BetInfo[];
+
+        const thisMarketBet = parsed.find((b) => b.marketId === id);
+        if (thisMarketBet) setUserBet(thisMarketBet);
+      } catch (err) {
+        console.error('Error loading user bet:', err);
+      }
+    };
+
+    loadUserBet();
+  }, [client, connectedAddress, id, isConnected, addr]);
+
+  // --- Place Bet ---
   const handleBet = async (betYes: boolean) => {
-  try {
-    setLoading(true);
-    setError(null);
-
-    if (!isConnected || !connectedAddress) {
-      setError('Connect your wallet to place a bet.');
-      return;
-    }
-    if (!client) {
-      setError('RPC client not ready.');
-      return;
-    }
-
-    const functionName = betYes ? 'buyYes' : 'buyNo';
-    // Simulate first to surface precise revert reasons and ensure correct account/chain/value
-    if (!addr) {
-      setError('Contract address unavailable.');
-      return;
-    }
-    const sim = await client.simulateContract({
-      address: addr as `0x${string}`,
-      abi: VYBE_CONTRACT_ABI,
-      functionName,
-      args: [BigInt(id)],
-      account: connectedAddress,
-      value: parseEther('0.1'),
-    });
-
-    const tx = await writeContractAsync({
-      ...sim.request,
-    });
-
-    console.log('Bet placed tx hash:', tx);
-  } catch (err) {
-    console.error('Bet failed:', err);
-    setError((err as Error)?.message ?? 'Bet transaction failed');
-  } finally {
-    setLoading(false);
-  }
-  };
-
-  const handleRedeem = async () => {
     try {
       setLoading(true);
+      setError(null);
+      if (!isConnected || !connectedAddress) {
+        setError('Connect your wallet to place a bet.');
+        return;
+      }
+      if (!client) {
+        setError('RPC client not ready.');
+        return;
+      }
+      if (!addr) {
+        setError('Contract address unavailable.');
+        return;
+      }
+      const functionName = betYes ? 'buyYes' : 'buyNo';
+      const sim = await client.simulateContract({
+        address: addr,
+        abi: VYBE_CONTRACT_ABI,
+        functionName,
+        args: [BigInt(id)],
+        account: connectedAddress,
+        value: parseEther('0.1'),
+      });
+      const tx = await writeContractAsync({ ...sim.request });
+      console.log('Bet tx:', tx);
+    } catch (err) {
+      console.error('Bet failed:', err);
+      setError((err as Error)?.message ?? 'Bet transaction failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // --- Redeem Winnings ---
+  const handleRedeem = async () => {
+    try {
+      setRedeeming(true);
       setError(null);
       if (!isConnected || !connectedAddress) {
         setError('Connect your wallet to redeem.');
@@ -195,7 +231,7 @@ export default function EventPage() {
         return;
       }
       const sim = await client.simulateContract({
-        address: addr as `0x${string}`,
+        address: addr,
         abi: VYBE_CONTRACT_ABI,
         functionName: 'redeem',
         args: [BigInt(id)],
@@ -203,37 +239,30 @@ export default function EventPage() {
       });
       const tx = await writeContractAsync({ ...sim.request });
       console.log('Redeem tx:', tx);
+      setUserBet((prev) => (prev ? { ...prev, claimed: true } : prev));
     } catch (err) {
       console.error('Redeem failed:', err);
       setError((err as Error)?.message ?? 'Redeem failed');
     } finally {
-      setLoading(false);
+      setRedeeming(false);
     }
   };
 
-  if (error) {
+  // Keep closed markets accessible: no redirect; users can view details and redeem if applicable.
+
+  if (error)
     return (
-      <div className="mx-auto max-w-2xl p-6">
-        <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm">
-          <div className="font-semibold text-red-400">Unable to load market</div>
-          <div className="mt-1 text-red-300 whitespace-pre-wrap">{error}</div>
-          <div className="mt-2 text-red-300/80">
-            Tips:
-            <ul className="list-disc list-inside">
-              <li>Ensure Hardhat node is running on {process.env.NEXT_PUBLIC_RPC_URL || 'http://127.0.0.1:8545'}</li>
-              <li>If no address is in the URL, set NEXT_PUBLIC_DEPLOYER_ADDRESS[ES] so the app can discover deployments</li>
-              <li>Refresh the app after redeploying the node or contracts to clear stale client cache</li>
-            </ul>
-          </div>
-        </div>
+      <div className="p-6 text-center text-red-400">
+        <p className="font-semibold mb-2">Error loading market</p>
+        <pre className="text-sm opacity-80">{error}</pre>
       </div>
     );
-  }
 
   if (!market) return <p className="p-8 text-center">Loading market...</p>;
 
   const nowSec = Math.floor(Date.now() / 1000);
   const isClosed = market.resolved || market.deadline <= nowSec;
+  const alreadyClaimed = userBet?.claimed ?? false;
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8 space-y-6">
@@ -256,29 +285,47 @@ export default function EventPage() {
             <div>No Pool: {formatEther(market.noPool)} ETH</div>
           </div>
 
+          {/* Bet buttons */}
           <div className="mt-6 grid sm:grid-cols-2 gap-4">
             <button
               onClick={() => handleBet(true)}
-              disabled={loading || isClosed}
-              className="btn btn-primary rounded-full"
+              disabled={
+                loading || (!!userBet && userBet.betYes === false)
+              }
+              className={`btn rounded-full ${userBet?.betYes === true ? 'btn-primary' : 'btn-outline'}`}
             >
               {loading ? 'Processing...' : (isClosed ? 'Betting closed' : 'Bet Yes (0.1 ETH)')}
             </button>
+
             <button
               onClick={() => handleBet(false)}
-              disabled={loading || isClosed}
-              className="btn btn-ghost rounded-full"
+              disabled={
+                loading || isClosed || (!!userBet && userBet.betYes === true)
+              }
+              className={`btn rounded-full ${userBet?.betYes === false ? 'btn-ghost' : 'btn-outline'}`}
             >
               {loading ? 'Processing...' : (isClosed ? 'Betting closed' : 'Bet No (0.1 ETH)')}
             </button>
-            <button
-              onClick={handleRedeem}
-              disabled={loading}
-              className="btn btn-outline rounded-full"
-            >
-              {loading ? 'Processing...' : 'Redeem'}
-            </button>
           </div>
+
+          {/* Claim Winnings Button (visible only after market is resolved) */}
+          {market.resolved && (
+            <div className="mt-8 text-center">
+              {alreadyClaimed ? (
+                <div className="text-green-400 text-sm font-semibold">
+                  Already Claimed
+                </div>
+              ) : (
+                <button
+                  onClick={handleRedeem}
+                  disabled={!isConnected || redeeming}
+                  className="btn btn-success rounded-full"
+                >
+                  {redeeming ? 'Claiming...' : 'Claim Winnings'}
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </section>
     </div>
