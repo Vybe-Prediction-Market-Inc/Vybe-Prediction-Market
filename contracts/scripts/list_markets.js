@@ -1,8 +1,5 @@
 const hre = require("hardhat");
 
-// Simple helper to shorten addresses
-const short = (a) => `${a.slice(0, 6)}…${a.slice(-4)}`;
-
 async function main() {
   const [deployer] = await hre.ethers.getSigners();
   const provider = hre.ethers.provider;

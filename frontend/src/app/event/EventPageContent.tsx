@@ -15,8 +15,8 @@ interface Market {
   deadline: number;
   resolved: boolean;
   outcomeYes: boolean;
-  yesPool: number;
-  noPool: number;
+  yesPool: bigint;
+  noPool: bigint;
 }
 
 type MarketTuple = [
@@ -124,8 +124,8 @@ export default function EventPage() {
           deadline: Number(deadline),
           resolved,
           outcomeYes,
-          yesPool: Number(yesPool),
-          noPool: Number(noPool),
+          yesPool: yesPool,
+          noPool: noPool,
         });
       } catch (err) {
         console.error('Error fetching market:', err);
@@ -252,8 +252,8 @@ export default function EventPage() {
           )}
 
           <div className="mt-4 text-sm">
-            <div>Yes Pool: {formatEther(BigInt(market.yesPool))} ETH</div>
-            <div>No Pool: {formatEther(BigInt(market.noPool))} ETH</div>
+            <div>Yes Pool: {formatEther(market.yesPool)} ETH</div>
+            <div>No Pool: {formatEther(market.noPool)} ETH</div>
           </div>
 
           <div className="mt-6 grid sm:grid-cols-2 gap-4">

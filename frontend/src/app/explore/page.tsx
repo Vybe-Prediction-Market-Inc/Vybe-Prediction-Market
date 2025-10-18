@@ -76,28 +76,42 @@ export default function ExplorePage() {
         <div className="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {sortedMarkets.map((market) => {
             const isClosed = market.resolved || market.deadline <= nowSec;
-            return (
+            const content = (
+              <div className="card-body">
+                <div className="flex items-start justify-between gap-2">
+                  <h2 className="h2 mb-2">{market.question}</h2>
+                  {isClosed && (
+                    <span className="inline-flex items-center rounded-full bg-white/10 text-white/70 text-[10px] px-2 py-0.5">
+                      Closed
+                    </span>
+                  )}
+                </div>
+                <p className="muted text-xs mb-1">Market #{market.marketId} · {shortAddr(market.contractAddress)}</p>
+                <p className="muted text-sm mb-1">Track ID: {market.trackId}</p>
+                {!isClosed && (
+                  <p className="text-xs text-white/70 mt-1">Ends in {formatRemaining(market.deadline - nowSec)}</p>
+                )}
+              </div>
+            );
+
+            return isClosed ? (
+              <div
+                key={`${market.contractAddress}-${market.marketId}`}
+                className={`card transition block focus:outline-none rounded-xl opacity-60 border-white/5 cursor-not-allowed`}
+                aria-disabled
+                tabIndex={-1}
+                title={market.contractAddress}
+              >
+                {content}
+              </div>
+            ) : (
               <Link
                 key={`${market.contractAddress}-${market.marketId}`}
                 href={`/event?address=${market.contractAddress}&id=${market.marketId}`}
-                className={`card transition block focus:outline-none rounded-xl ${isClosed ? 'opacity-60 border-white/5 hover:border-white/5 cursor-not-allowed' : 'hover:border-[var(--brand)] focus:ring-2 focus:ring-[var(--brand)]'}`}
-                aria-disabled={isClosed}
+                className={`card transition block focus:outline-none rounded-xl hover:border-[var(--brand)] focus:ring-2 focus:ring-[var(--brand)]`}
+                title={market.contractAddress}
               >
-                <div className="card-body">
-                  <div className="flex items-start justify-between gap-2">
-                    <h2 className="h2 mb-2">{market.question}</h2>
-                    {isClosed && (
-                      <span className="inline-flex items-center rounded-full bg-white/10 text-white/70 text-[10px] px-2 py-0.5">
-                        Closed
-                      </span>
-                    )}
-                  </div>
-                  <p className="muted text-xs mb-1">Market #{market.marketId} · {shortAddr(market.contractAddress)}</p>
-                  <p className="muted text-sm mb-1">Track ID: {market.trackId}</p>
-                  {!isClosed && (
-                    <p className="text-xs text-white/70 mt-1">Ends in {formatRemaining(market.deadline - nowSec)}</p>
-                  )}
-                </div>
+                {content}
               </Link>
             );
           })}

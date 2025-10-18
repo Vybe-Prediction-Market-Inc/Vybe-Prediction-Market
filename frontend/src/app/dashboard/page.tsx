@@ -9,7 +9,7 @@ interface Bet {
   contractAddress: `0x${string}`;
   marketId: number;
   betYes: boolean;
-  amount: number;
+  amount: bigint;
   claimed: boolean;
   question?: string;
   deadline?: number;
@@ -97,7 +97,7 @@ export default function DashboardPage() {
               contractAddress: addr,
               marketId: Number(b.marketId),
               betYes: b.betYes,
-              amount: Number(b.amount),
+              amount: b.amount as bigint,
               claimed: b.claimed,
               question,
               deadline,
@@ -131,24 +131,46 @@ export default function DashboardPage() {
         <section className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {sortedBets.map((bet) => {
             const isClosed = (bet.resolved === true) || (typeof bet.deadline === 'number' && bet.deadline <= nowSec);
-            return (
-            <a key={`${bet.contractAddress}-${bet.marketId}`} href={`/event?address=${bet.contractAddress}&id=${bet.marketId}`} className={`rounded-xl border border-white/10 p-4 bg-white/5 block ${isClosed ? 'opacity-60 hover:border-white/10 cursor-not-allowed' : 'hover:border-[var(--brand)]'}`} title={bet.contractAddress}>
-              <div className="font-medium">{bet.question || `Market #${bet.marketId}`}</div>
+            const content = (
+              <>
+                <div className="font-medium">{bet.question || `Market #${bet.marketId}`}</div>
                 <div className="text-[10px] text-white/40 flex items-center gap-2">Market #{bet.marketId} · {shortAddr(bet.contractAddress)} {isClosed && <span className="inline-flex items-center rounded-full bg-white/10 text-white/70 text-[10px] px-2 py-0.5">Closed</span>}</div>
-              <div className="mt-1">
-                <span className={bet.betYes ? "text-green-400" : "text-red-400"}>
-                  {bet.betYes ? "Yes" : "No"}
-                </span>{" "}
-                bet of {formatEther(BigInt(bet.amount))} ETH
+                <div className="mt-1">
+                  <span className={bet.betYes ? "text-green-400" : "text-red-400"}>
+                    {bet.betYes ? "Yes" : "No"}
+                  </span>{" "}
+                  bet of {formatEther(bet.amount)} ETH
+                </div>
+                {!isClosed && typeof bet.deadline === 'number' && (
+                  <div className="text-xs text-white/70 mt-1">Ends in {formatRemaining(bet.deadline - nowSec)}</div>
+                )}
+                {bet.claimed && (
+                  <div className="text-xs text-green-500 mt-1">✅ Claimed</div>
+                )}
+              </>
+            );
+
+            return isClosed ? (
+              <div
+                key={`${bet.contractAddress}-${bet.marketId}`}
+                className={`rounded-xl border border-white/10 p-4 bg-white/5 block opacity-60 cursor-not-allowed`}
+                aria-disabled
+                tabIndex={-1}
+                title={bet.contractAddress}
+              >
+                {content}
               </div>
-              {!isClosed && typeof bet.deadline === 'number' && (
-                <div className="text-xs text-white/70 mt-1">Ends in {formatRemaining(bet.deadline - nowSec)}</div>
-              )}
-              {bet.claimed && (
-                <div className="text-xs text-green-500 mt-1">✅ Claimed</div>
-              )}
-            </a>
-          )})}
+            ) : (
+              <a
+                key={`${bet.contractAddress}-${bet.marketId}`}
+                href={`/event?address=${bet.contractAddress}&id=${bet.marketId}`}
+                className={`rounded-xl border border-white/10 p-4 bg-white/5 block hover:border-[var(--brand)]`}
+                title={bet.contractAddress}
+              >
+                {content}
+              </a>
+            );
+          })}
         </section>
       )}
     </div>
