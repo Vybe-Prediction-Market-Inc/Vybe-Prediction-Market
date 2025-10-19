@@ -2,7 +2,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { useAccount, usePublicClient, useWriteContract } from 'wagmi';
 import { parseEther, formatEther } from 'viem';
 import { VYBE_CONTRACT_ABI, discoverVybeContractsFromDeployers } from '@/lib/contract';
@@ -41,7 +41,6 @@ export default function EventPageContent() {
   const search = useSearchParams();
   const id = Number(search.get('id') ?? 1);
   const fromUrl = search.get('address') as `0x${string}` | null;
-  const router = useRouter();
   const client = usePublicClient();
   const { writeContractAsync } = useWriteContract();
   const { address: connectedAddress, isConnected } = useAccount();
