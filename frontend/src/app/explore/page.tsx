@@ -3,7 +3,9 @@
 import Link from "next/link";
 import SearchBar from "@/components/SearchBar";
 import { useMarkets } from "@/hooks/useMarkets";
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useAccount, usePublicClient, useWriteContract } from "wagmi";
+import { VYBE_CONTRACT_ABI } from "@/lib/contract";
 
 type MarketTuple = [
   string,   // question
@@ -30,10 +32,17 @@ interface Market {
 
 export default function ExplorePage() {
   const { markets, loading, error } = useMarkets();
+  const client = usePublicClient();
+  const { address: connectedAddress, isConnected } = useAccount();
+  const { writeContractAsync } = useWriteContract();
   const shortAddr = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
   // Static timestamp per mount (no live countdown)
   const nowSecRef = useRef(Math.floor(Date.now() / 1000));
   const nowSec = nowSecRef.current;
+  const [redeemingKey, setRedeemingKey] = useState<string | null>(null);
+
+  type UserBet = { betYes: boolean; amount: bigint; claimed: boolean };
+  const [userBets, setUserBets] = useState<Record<string, Record<number, UserBet>>>({});
 
   const formatRemaining = (seconds: number) => {
     if (seconds <= 0) return "0s";
@@ -55,12 +64,90 @@ export default function ExplorePage() {
     arr.sort((a, b) => {
       const aClosed = a.resolved || a.deadline <= nowSec;
       const bClosed = b.resolved || b.deadline <= nowSec;
-      if (aClosed !== bClosed) return aClosed ? 1 : -1; // open first
-      // then sort by soonest deadline
+
+      const betA = (userBets[a.contractAddress] || {})[a.marketId];
+      const redeemA = Boolean(a.resolved && betA && !betA.claimed && (betA.amount > BigInt(0)) && (betA.betYes === a.outcomeYes));
+      const betB = (userBets[b.contractAddress] || {})[b.marketId];
+      const redeemB = Boolean(b.resolved && betB && !betB.claimed && (betB.amount > BigInt(0)) && (betB.betYes === b.outcomeYes));
+
+      // 1) Redeemable first
+      if (redeemA !== redeemB) return redeemA ? -1 : 1;
+      // 2) Open first
+      if (aClosed !== bClosed) return aClosed ? 1 : -1;
+      // 3) Soonest deadline
       return a.deadline - b.deadline;
     });
     return arr;
-  }, [markets, nowSec]);
+  }, [markets, nowSec, userBets]);
+
+  // Load user's bets for each discovered contract to enable redeem button
+  useEffect(() => {
+    if (!client || !isConnected || !connectedAddress || !sortedMarkets || sortedMarkets.length === 0) return;
+    const byContract = new Map<string, true>();
+    for (const m of sortedMarkets) byContract.set(m.contractAddress, true);
+    const addrs = Array.from(byContract.keys());
+
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const next: Record<string, Record<number, UserBet>> = {};
+        for (const addr of addrs) {
+          const code = await client.getBytecode({ address: addr as `0x${string}` });
+          if (!code || code === '0x') continue;
+          const rows = await client.readContract({
+            address: addr as `0x${string}`,
+            abi: VYBE_CONTRACT_ABI,
+            functionName: 'getUserBets',
+            args: [connectedAddress],
+          }) as any[];
+          const map: Record<number, UserBet> = {};
+          for (const r of rows) {
+            const id = Number(r.marketId);
+            map[id] = { betYes: r.betYes, amount: r.amount as bigint, claimed: r.claimed };
+          }
+          next[addr] = map;
+        }
+        if (!cancelled) setUserBets(next);
+      } catch (e) {
+        // ignore softly
+        console.warn('Failed to load user bets for explore:', e);
+      }
+    };
+    run();
+    return () => { cancelled = true; };
+  }, [client, isConnected, connectedAddress, JSON.stringify(sortedMarkets?.map(m => `${m.contractAddress}:${m.marketId}`))]);
+
+  const handleRedeem = async (e: React.MouseEvent, contractAddress: `0x${string}`, marketId: number) => {
+    // prevent parent Link navigation when clicking inside cards
+    e.preventDefault();
+    e.stopPropagation();
+    if (!client || !isConnected || !connectedAddress) return;
+    const key = `${contractAddress}-${marketId}`;
+    try {
+      setRedeemingKey(key);
+      const sim = await client.simulateContract({
+        address: contractAddress,
+        abi: VYBE_CONTRACT_ABI,
+        functionName: 'redeem',
+        args: [BigInt(marketId)],
+        account: connectedAddress,
+      });
+      await writeContractAsync({ ...sim.request });
+      // Optimistically mark claimed
+      setUserBets(prev => {
+        const copy = { ...prev };
+        const per = { ...(copy[contractAddress] || {}) };
+        const existing = per[marketId];
+        if (existing) per[marketId] = { ...existing, claimed: true };
+        copy[contractAddress] = per;
+        return copy;
+      });
+    } catch (err) {
+      console.error('Redeem failed:', err);
+    } finally {
+      setRedeemingKey(null);
+    }
+  };
 
   return (
     <div className="px-4 py-8 max-w-6xl mx-auto space-y-6">
@@ -76,6 +163,14 @@ export default function ExplorePage() {
         <div className="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {sortedMarkets.map((market) => {
             const isClosed = market.resolved || market.deadline <= nowSec;
+            const bet = (userBets[market.contractAddress] || {})[market.marketId];
+            const eligibleToRedeem = Boolean(
+              market.resolved &&
+              bet &&
+              !bet.claimed &&
+              (bet.amount > BigInt(0)) &&
+              (bet.betYes === market.outcomeYes)
+            );
             const content = (
               <div className="card-body">
                 <div className="flex items-start justify-between gap-2">
@@ -90,6 +185,17 @@ export default function ExplorePage() {
                 <p className="muted text-sm mb-1">Track ID: {market.trackId}</p>
                 {!isClosed && (
                   <p className="text-xs text-white/70 mt-1">Ends in {formatRemaining(market.deadline - nowSec)}</p>
+                )}
+                {eligibleToRedeem && (
+                  <div className="mt-3">
+                    <button
+                      onClick={(e) => handleRedeem(e, market.contractAddress as `0x${string}`, market.marketId)}
+                      className="btn btn-success rounded-full text-xs"
+                      disabled={redeemingKey === `${market.contractAddress}-${market.marketId}`}
+                    >
+                      {redeemingKey === `${market.contractAddress}-${market.marketId}` ? 'Claiming…' : 'Redeem Winnings'}
+                    </button>
+                  </div>
                 )}
               </div>
             );
