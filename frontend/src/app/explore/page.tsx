@@ -39,7 +39,7 @@ export default function ExplorePage() {
   // Static timestamp per mount (no live countdown)
   const nowSecRef = useRef(Math.floor(Date.now() / 1000));
   const nowSec = nowSecRef.current;
-  const [redeemingKey, setRedeemingKey] = useState<string | null>(null);
+  const [redeemingKeys, setRedeemingKeys] = useState<Set<string>>(new Set());
 
   type UserBet = { betYes: boolean; amount: bigint; claimed: boolean };
   const [userBets, setUserBets] = useState<Record<string, Record<number, UserBet>>>({});
@@ -90,21 +90,33 @@ export default function ExplorePage() {
     let cancelled = false;
     const run = async () => {
       try {
+        const entries = await Promise.all(
+          addrs.map(async (addr) => {
+            try {
+              const code = await client.getBytecode({ address: addr as `0x${string}` });
+              if (!code || code === '0x') return null;
+              const rows = await client.readContract({
+                address: addr as `0x${string}`,
+                abi: VYBE_CONTRACT_ABI,
+                functionName: 'getUserBets',
+                args: [connectedAddress],
+              }) as any[];
+              const map: Record<number, UserBet> = {};
+              for (const r of rows) {
+                const id = Number(r.marketId);
+                map[id] = { betYes: r.betYes, amount: r.amount as bigint, claimed: r.claimed };
+              }
+              return [addr, map] as const;
+            } catch {
+              return null;
+            }
+          })
+        );
+
         const next: Record<string, Record<number, UserBet>> = {};
-        for (const addr of addrs) {
-          const code = await client.getBytecode({ address: addr as `0x${string}` });
-          if (!code || code === '0x') continue;
-          const rows = await client.readContract({
-            address: addr as `0x${string}`,
-            abi: VYBE_CONTRACT_ABI,
-            functionName: 'getUserBets',
-            args: [connectedAddress],
-          }) as any[];
-          const map: Record<number, UserBet> = {};
-          for (const r of rows) {
-            const id = Number(r.marketId);
-            map[id] = { betYes: r.betYes, amount: r.amount as bigint, claimed: r.claimed };
-          }
+        for (const entry of entries) {
+          if (!entry) continue;
+          const [addr, map] = entry;
           next[addr] = map;
         }
         if (!cancelled) setUserBets(next);
@@ -124,7 +136,11 @@ export default function ExplorePage() {
     if (!client || !isConnected || !connectedAddress) return;
     const key = `${contractAddress}-${marketId}`;
     try {
-      setRedeemingKey(key);
+      setRedeemingKeys(prev => {
+        const next = new Set(prev);
+        next.add(key);
+        return next;
+      });
       const sim = await client.simulateContract({
         address: contractAddress,
         abi: VYBE_CONTRACT_ABI,
@@ -145,7 +161,11 @@ export default function ExplorePage() {
     } catch (err) {
       console.error('Redeem failed:', err);
     } finally {
-      setRedeemingKey(null);
+      setRedeemingKeys(prev => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
     }
   };
 
@@ -191,9 +211,9 @@ export default function ExplorePage() {
                     <button
                       onClick={(e) => handleRedeem(e, market.contractAddress as `0x${string}`, market.marketId)}
                       className="btn btn-success rounded-full text-xs"
-                      disabled={redeemingKey === `${market.contractAddress}-${market.marketId}`}
+                      disabled={redeemingKeys.has(`${market.contractAddress}-${market.marketId}`)}
                     >
-                      {redeemingKey === `${market.contractAddress}-${market.marketId}` ? 'Claiming…' : 'Redeem Winnings'}
+                      {redeemingKeys.has(`${market.contractAddress}-${market.marketId}`) ? 'Claiming…' : 'Redeem Winnings'}
                     </button>
                   </div>
                 )}
