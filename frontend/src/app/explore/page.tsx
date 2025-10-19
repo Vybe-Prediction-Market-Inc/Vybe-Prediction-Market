@@ -40,6 +40,8 @@ export default function ExplorePage() {
   const nowSecRef = useRef(Math.floor(Date.now() / 1000));
   const nowSec = nowSecRef.current;
   const [redeemingKeys, setRedeemingKeys] = useState<Set<string>>(new Set());
+  // Synchronous in-flight guard to prevent double-click duplicate calls
+  const inFlightRedeemsRef = useRef<Set<string>>(new Set());
 
   type UserBet = { betYes: boolean; amount: bigint; claimed: boolean };
   const [userBets, setUserBets] = useState<Record<string, Record<number, UserBet>>>({});
@@ -143,6 +145,9 @@ export default function ExplorePage() {
     e.stopPropagation();
     if (!client || !isConnected || !connectedAddress) return;
     const key = `${contractAddress}-${marketId}`;
+    // Synchronous guard to avoid duplicate simulate/tx from fast double-clicks
+    if (inFlightRedeemsRef.current.has(key)) return;
+    inFlightRedeemsRef.current.add(key);
     try {
       setRedeemingKeys(prev => {
         const next = new Set(prev);
@@ -169,6 +174,7 @@ export default function ExplorePage() {
     } catch (err) {
       console.error('Redeem failed:', err);
     } finally {
+      inFlightRedeemsRef.current.delete(key);
       setRedeemingKeys(prev => {
         const next = new Set(prev);
         next.delete(key);
