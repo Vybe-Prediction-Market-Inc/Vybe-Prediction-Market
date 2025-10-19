@@ -80,12 +80,20 @@ export default function ExplorePage() {
     return arr;
   }, [markets, nowSec, userBets]);
 
+  // Stable, order-insensitive list and key of unique contract addresses
+  const contractAddresses = useMemo(() => {
+    if (!markets) return [] as string[];
+    const set = new Set<string>();
+    for (const m of markets) set.add(m.contractAddress);
+    return Array.from(set).sort();
+  }, [markets]);
+
+  const contractsKey = useMemo(() => contractAddresses.join("|"), [contractAddresses]);
+
   // Load user's bets for each discovered contract to enable redeem button
   useEffect(() => {
-    if (!client || !isConnected || !connectedAddress || !sortedMarkets || sortedMarkets.length === 0) return;
-    const byContract = new Map<string, true>();
-    for (const m of sortedMarkets) byContract.set(m.contractAddress, true);
-    const addrs = Array.from(byContract.keys());
+    if (!client || !isConnected || !connectedAddress || contractAddresses.length === 0) return;
+    const addrs = contractAddresses;
 
     let cancelled = false;
     const run = async () => {
@@ -127,7 +135,7 @@ export default function ExplorePage() {
     };
     run();
     return () => { cancelled = true; };
-  }, [client, isConnected, connectedAddress, JSON.stringify(sortedMarkets?.map(m => `${m.contractAddress}:${m.marketId}`))]);
+  }, [client, isConnected, connectedAddress, contractsKey]);
 
   const handleRedeem = async (e: React.MouseEvent, contractAddress: `0x${string}`, marketId: number) => {
     // prevent parent Link navigation when clicking inside cards
