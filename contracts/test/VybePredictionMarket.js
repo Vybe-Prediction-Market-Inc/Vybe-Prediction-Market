@@ -13,7 +13,7 @@ describe("VybePredictionMarket", function () {
 
         await (
             await vybe.createMarket(
-                "Will the track reach popularity >= 80?",
+                "Will the track reach playback count >= 80?",
                 "4uLU6hMCjMI75M1A2tKUQC",
                 80,
                 deadline

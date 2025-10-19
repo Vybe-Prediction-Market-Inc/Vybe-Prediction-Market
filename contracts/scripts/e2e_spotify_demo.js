@@ -6,69 +6,71 @@ const dotenv = require("dotenv");
 dotenv.config({ path: path.resolve(__dirname, "..", "..", ".env") });
 dotenv.config();
 
-async function getSpotifyToken() {
-    if (process.env.SPOTIFY_ACCESS_TOKEN)
-        return process.env.SPOTIFY_ACCESS_TOKEN;
-    const id = process.env.SPOTIFY_CLIENT_ID;
-    const secret = process.env.SPOTIFY_CLIENT_SECRET;
-    if (!id || !secret) {
-        throw new Error("Set SPOTIFY_ACCESS_TOKEN or SPOTIFY_CLIENT_ID/SECRET");
+const RAPIDAPI_HOST =
+    process.env.RAPIDAPI_HOST ||
+    "spotify-track-streams-playback-count1.p.rapidapi.com";
+
+function extractPlaybackCount(payload) {
+    const candidates = [
+        payload?.spotify_track_streams?.streams,
+        payload?.spotify_track_streams?.playback_count,
+        payload?.spotify_track_streams?.total_streams,
+        payload?.data?.streams,
+        payload?.data?.playback_count,
+        payload?.data?.total_streams,
+        payload?.streams,
+        payload?.playback_count,
+        payload?.total_streams,
+    ];
+    for (const value of candidates) {
+        if (typeof value === "number" && Number.isFinite(value)) {
+            return value;
+        }
     }
-    const params = new URLSearchParams();
-    params.append("grant_type", "client_credentials");
-    params.append("client_id", id);
-    params.append("client_secret", secret);
-    const res = await fetch("https://accounts.spotify.com/api/token", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: params.toString(),
-    });
-    if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`Spotify token error: ${res.status} ${text}`);
+    const flattened = Array.isArray(payload)
+        ? payload
+        : payload && typeof payload === "object"
+        ? Object.values(payload)
+        : [];
+    for (const value of flattened) {
+        if (typeof value === "number" && Number.isFinite(value)) {
+            return value;
+        }
     }
-    const json = await res.json();
-    return json.access_token;
+    throw new Error(
+        `Playback count not found in RapidAPI response: ${JSON.stringify(
+            payload
+        ).slice(0, 500)}`
+    );
 }
 
-async function fetchPopularity(trackId) {
-    const tryFetch = async (token) =>
-        fetch(`https://api.spotify.com/v1/tracks/${trackId}`, {
-            headers: { Authorization: `Bearer ${token}` },
-        });
-
-    let token = await getSpotifyToken();
-    let res = await tryFetch(token);
-    if (
-        res.status === 401 &&
-        process.env.SPOTIFY_CLIENT_ID &&
-        process.env.SPOTIFY_CLIENT_SECRET &&
-        process.env.SPOTIFY_ACCESS_TOKEN
-    ) {
-        // Fallback: refresh via client credentials when provided access token is invalid
-        const params = new URLSearchParams();
-        params.append("grant_type", "client_credentials");
-        params.append("client_id", process.env.SPOTIFY_CLIENT_ID);
-        params.append("client_secret", process.env.SPOTIFY_CLIENT_SECRET);
-        const tokRes = await fetch("https://accounts.spotify.com/api/token", {
-            method: "POST",
-            headers: { "Content-Type": "application/x-www-form-urlencoded" },
-            body: params.toString(),
-        });
-        if (!tokRes.ok) {
-            const text = await tokRes.text();
-            throw new Error(`Spotify token error: ${tokRes.status} ${text}`);
-        }
-        const tokJson = await tokRes.json();
-        token = tokJson.access_token;
-        res = await tryFetch(token);
+async function fetchPlaybackCount(trackId) {
+    const apiKey = process.env.RAPIDAPI_KEY;
+    if (!apiKey) {
+        throw new Error("Set RAPIDAPI_KEY");
     }
+
+    const url = new URL(
+        `https://${RAPIDAPI_HOST}/tracks/spotify_track_streams`
+    );
+    url.searchParams.set("spotify_track_id", trackId);
+
+    const res = await fetch(url, {
+        headers: {
+            "x-rapidapi-host": RAPIDAPI_HOST,
+            "x-rapidapi-key": apiKey,
+        },
+    });
+
     if (!res.ok) {
         const text = await res.text();
-        throw new Error(`Spotify track error: ${res.status} ${text}`);
+        throw new Error(
+            `RapidAPI playback error: ${res.status} ${res.statusText} ${text}`
+        );
     }
+
     const json = await res.json();
-    return json.popularity;
+    return extractPlaybackCount(json);
 }
 
 async function main() {
@@ -83,14 +85,14 @@ async function main() {
 
     // Params
     const trackId = process.env.TRACK_ID || "4ubwzNjqHGaZZ5k06PDx1H";
-    const threshold = Number(process.env.THRESHOLD || 80);
+    const threshold = Number(process.env.THRESHOLD || "100000");
 
     // Create a market with 5s deadline
     const latest = await hre.ethers.provider.getBlock("latest");
     const deadline = latest.timestamp + 5;
     await (
         await vybe.createMarket(
-            `Will this track hit popularity >= ${threshold}?`,
+            `Will this track hit playback count >= ${threshold}?`,
             trackId,
             threshold,
             deadline
@@ -116,16 +118,16 @@ async function main() {
     await hre.ethers.provider.send("evm_setNextBlockTimestamp", [deadline + 1]);
     await hre.ethers.provider.send("evm_mine", []);
 
-    // Fetch Spotify popularity and resolve via oracle signer
-    const popularity = await fetchPopularity(trackId);
-    console.log(`Spotify popularity for ${trackId}:`, popularity);
+    // Fetch playback count via RapidAPI and resolve via oracle signer
+    const playbackCount = await fetchPlaybackCount(trackId);
+    console.log(`Playback count for ${trackId}:`, playbackCount);
     await (
-        await vybe.connect(oracle).resolveMarket(marketId, popularity)
+        await vybe.connect(oracle).resolveMarket(marketId, playbackCount)
     ).wait();
-    console.log("Resolved using Spotify data.");
+    console.log("Resolved using RapidAPI playback data.");
 
     // Redeem for winning side
-    const outcomeYes = popularity >= threshold;
+    const outcomeYes = playbackCount >= threshold;
     if (outcomeYes) {
         const before = await hre.ethers.provider.getBalance(alice.address);
         const rcpt = await (await vybe.connect(alice).redeem(marketId)).wait();
