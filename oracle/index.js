@@ -35,7 +35,7 @@ async function fetchPlaybackCount(trackId) {
 }
 
 async function main() {
-    const trackId = process.env.TRACK_ID || "4uLU6hMCjMI75M1A2tKUQC";
+    const trackId = process.env.TRACK_ID;
     const playbackCount = await fetchPlaybackCount(trackId);
     console.log(
         `RapidAPI playback count for track ${trackId}: ${playbackCount}`
