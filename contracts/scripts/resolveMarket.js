@@ -7,9 +7,9 @@ async function main() {
     const [deployer, oracle] = await hre.ethers.getSigners();
 
     // Inputs
-    const addr = "0x8f86403A4DE0BB5791fa46B8e795C547942fE4Cf";
+    const addr = process.env.MARKET_ADDRESS;
     const marketId = Number(process.env.MARKET_ID || "1");
-    const observed = Number(process.env.OBSERVED || "86");
+    const observed = BigInt(process.env.OBSERVED || "100000");
 
     if (!addr || !addr.startsWith("0x")) {
         throw new Error(
@@ -19,8 +19,8 @@ async function main() {
     if (Number.isNaN(marketId) || marketId <= 0) {
         throw new Error("MARKET_ID must be a positive integer");
     }
-    if (Number.isNaN(observed) || observed < 0 || observed > 100) {
-        throw new Error("OBSERVED must be between 0 and 100");
+    if (observed < 0n) {
+        throw new Error("OBSERVED must be a non-negative integer");
     }
 
     // Sanity: code at address
@@ -53,7 +53,7 @@ async function main() {
         );
     }
     console.log(
-        `Network=${network} (chainId=${chainId})\nContract=${addr}\nMarketId=${marketId}\nObserved=${observed}`
+        `Network=${network} (chainId=${chainId})\nContract=${addr}\nMarketId=${marketId}\nObserved=${observed.toString()}`
     );
 
     // Resolve

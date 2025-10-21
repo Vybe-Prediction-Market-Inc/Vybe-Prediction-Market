@@ -12,7 +12,7 @@ contract VybePredictionMarket is Ownable, ReentrancyGuard {
         // Metadata
         string question; // Human-readable text
         string trackId; // Spotify Track ID used by oracle
-        uint256 threshold; // Popularity threshold (0-100 for Spotify popularity)
+        uint256 threshold; // Metric threshold used to resolve (e.g., playback count)
         uint256 deadline; // Timestamp after which trading is closed
         // State
         bool resolved;
@@ -91,7 +91,6 @@ contract VybePredictionMarket is Ownable, ReentrancyGuard {
     ) external onlyOwner returns (uint256 marketId) {
         require(bytes(question).length > 0, "empty question");
         require(bytes(trackId).length > 0, "empty trackId");
-        require(threshold <= 100, "threshold > 100");
         require(deadline > block.timestamp, "deadline in past");
 
         marketId = ++marketCount;
@@ -141,13 +140,12 @@ contract VybePredictionMarket is Ownable, ReentrancyGuard {
         emit BetPlaced(marketId, msg.sender, yes, msg.value);
     }
 
-    // Oracle resolves with an observed value (0-100). Outcome YES if observed >= threshold
+    // Oracle resolves with an observed metric value. Outcome YES if observed >= threshold
     function resolveMarket(
         uint256 marketId,
         uint256 observed
     ) external onlyOracle {
         require(marketId > 0 && marketId <= marketCount, "invalid market");
-        require(observed <= 100, "observed > 100");
         Market storage m = markets[marketId];
         require(!m.resolved, "already resolved");
         require(block.timestamp >= m.deadline, "before deadline");
