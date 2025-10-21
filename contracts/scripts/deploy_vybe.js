@@ -124,7 +124,7 @@ async function main() {
     console.log("Deadline:", deadline);
 }
 
-main().catch((e) => {
-    console.error(e);
-    process.exit(1);
+main().catch((err) => {
+  console.error("Deployment failed:", err);
+  process.exit(1);
 });
