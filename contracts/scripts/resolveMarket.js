@@ -1,5 +1,5 @@
 // Resolve a market and print the Resolved event + final state
-const hre = require("hardhat");
+import hre from "hardhat";
 
 async function main() {
     const network = hre.network?.name || "unknown";

@@ -1,6 +1,9 @@
-const hre = require("hardhat");
-const axios = require("axios");
-const { URLSearchParams } = require("url");
+import hre from "hardhat";
+import axios from "axios";
+import { URLSearchParams } from "url";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 const SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token";
 const SPOTIFY_SEARCH_URL = "https://api.spotify.com/v1/search";

@@ -1,5 +1,5 @@
 // Print all Resolved events for a VybePredictionMarket
-const hre = require("hardhat");
+import hre from "hardhat";
 
 async function main() {
   const addr = process.env.MARKET_ADDRESS;

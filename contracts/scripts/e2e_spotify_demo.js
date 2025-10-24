@@ -1,6 +1,7 @@
-const hre = require("hardhat");
-const path = require("path");
-const dotenv = require("dotenv");
+import hre from "hardhat";
+import path from "path";
+import dotenv from "dotenv";
+import fetch from "node-fetch"; // add if not global in Node.js 22+
 
 // Load env from project root, then local as a secondary (won't override)
 dotenv.config({ path: path.resolve(__dirname, "..", "..", ".env") });
