@@ -1,9 +1,6 @@
-const {
-  time,
-  loadFixture,
-} = require("@nomicfoundation/hardhat-toolbox/network-helpers");
-const { anyValue } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
-const { expect } = require("chai");
+import { time, loadFixture, anyValue } from "@nomicfoundation/hardhat-toolbox-mocha-ethers/network-helpers";
+import { expect } from "chai";
+import { ethers } from "hardhat";
 
 describe("Lock", function () {
   // We define a fixture to reuse the same setup in every test.

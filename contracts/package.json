@@ -1,6 +1,7 @@
 {
     "name": "contracts",
     "version": "1.0.0",
+    "type": "module",
     "main": "index.js",
     "scripts": {
         "node": "hardhat node --port 8545 --hostname 127.0.0.1",
@@ -10,15 +11,11 @@
         "e2e": "hardhat run scripts/e2e_demo.js --network localhost",
         "test": "echo \"Error: no test specified\" && exit 1"
     },
-    "keywords": [],
-    "author": "",
-    "license": "ISC",
-    "description": "",
     "devDependencies": {
-        "@nomicfoundation/hardhat-toolbox": "^6.1.0",
+        "@nomicfoundation/hardhat-toolbox-mocha-ethers": "^3.0.0",
         "@openzeppelin/contracts": "^5.0.2",
         "axios": "^1.6.8",
         "dotenv": "^17.2.3",
-        "hardhat": "^2.26.3"
+        "hardhat": "^3.0.9"
     }
 }
