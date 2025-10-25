@@ -1,0 +1,32 @@
+type VybePredictionMarket_BetPlaced {
+  id: ID!
+  marketId: BigInt!
+  user: String!
+  yes: Boolean!
+  amount: BigInt!
+}
+
+type VybePredictionMarket_MarketCreated {
+  id: ID!
+  marketId: BigInt!
+  question: String!
+  trackId: String!
+  threshold: BigInt!
+  deadline: BigInt!
+}
+
+type VybePredictionMarket_Redeemed {
+  id: ID!
+  marketId: BigInt!
+  user: String!
+  payout: BigInt!
+}
+
+type VybePredictionMarket_Resolved {
+  id: ID!
+  marketId: BigInt!
+  outcomeYes: Boolean!
+  yesPool: BigInt!
+  noPool: BigInt!
+}
+
