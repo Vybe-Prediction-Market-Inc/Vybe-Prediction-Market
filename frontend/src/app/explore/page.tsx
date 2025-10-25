@@ -31,7 +31,7 @@ interface Market {
 }
 
 export default function ExplorePage() {
-  const { markets, loading, error } = useMarkets();
+  const { markets, loading, error, contractAddresses } = useMarkets();
   const client = usePublicClient();
   const { address: connectedAddress, isConnected } = useAccount();
   const { writeContractAsync } = useWriteContract();
@@ -44,6 +44,13 @@ export default function ExplorePage() {
   const inFlightRedeemsRef = useRef<Set<string>>(new Set());
 
   type UserBet = { betYes: boolean; amount: bigint; claimed: boolean };
+  type ApiUserBet = {
+    contractAddress: `0x${string}`;
+    marketId: number;
+    betYes: boolean;
+    amount: string;
+    claimed: boolean;
+  };
   const [userBets, setUserBets] = useState<Record<string, Record<number, UserBet>>>({});
 
   const formatRemaining = (seconds: number) => {
@@ -82,62 +89,38 @@ export default function ExplorePage() {
     return arr;
   }, [markets, nowSec, userBets]);
 
-  // Stable, order-insensitive list and key of unique contract addresses
-  const contractAddresses = useMemo(() => {
-    if (!markets) return [] as string[];
-    const set = new Set<string>();
-    for (const m of markets) set.add(m.contractAddress);
-    return Array.from(set).sort();
-  }, [markets]);
-
   const contractsKey = useMemo(() => contractAddresses.join("|"), [contractAddresses]);
 
-  // Load user's bets for each discovered contract to enable redeem button
+  // Load user's bets via API to avoid heavy client-side RPC loops
   useEffect(() => {
-    if (!client || !isConnected || !connectedAddress || contractAddresses.length === 0) return;
-    const addrs = contractAddresses;
-
+    if (!isConnected || !connectedAddress || contractAddresses.length === 0) return;
     let cancelled = false;
+
     const run = async () => {
       try {
-        const entries = await Promise.all(
-          addrs.map(async (addr) => {
-            try {
-              const code = await client.getBytecode({ address: addr as `0x${string}` });
-              if (!code || code === '0x') return null;
-              const rows = await client.readContract({
-                address: addr as `0x${string}`,
-                abi: VYBE_CONTRACT_ABI,
-                functionName: 'getUserBets',
-                args: [connectedAddress],
-              }) as any[];
-              const map: Record<number, UserBet> = {};
-              for (const r of rows) {
-                const id = Number(r.marketId);
-                map[id] = { betYes: r.betYes, amount: r.amount as bigint, claimed: r.claimed };
-              }
-              return [addr, map] as const;
-            } catch {
-              return null;
-            }
-          })
-        );
-
-        const next: Record<string, Record<number, UserBet>> = {};
-        for (const entry of entries) {
-          if (!entry) continue;
-          const [addr, map] = entry;
-          next[addr] = map;
+        const params = new URLSearchParams({ address: connectedAddress });
+        const res = await fetch(`/api/user?${params.toString()}`, { cache: 'no-store' });
+        if (!res.ok) throw new Error(`User bets request failed (${res.status})`);
+        const payload = await res.json() as { bets?: ApiUserBet[] };
+        if (cancelled) return;
+        const grouped: Record<string, Record<number, UserBet>> = {};
+        for (const bet of payload.bets ?? []) {
+          const map = grouped[bet.contractAddress] || (grouped[bet.contractAddress] = {});
+          map[bet.marketId] = {
+            betYes: bet.betYes,
+            amount: BigInt(bet.amount ?? '0'),
+            claimed: bet.claimed,
+          };
         }
-        if (!cancelled) setUserBets(next);
-      } catch (e) {
-        // ignore softly
-        console.warn('Failed to load user bets for explore:', e);
+        setUserBets(grouped);
+      } catch (error) {
+        if (!cancelled) console.warn('Failed to load user bets for explore:', error);
       }
     };
+
     run();
     return () => { cancelled = true; };
-  }, [client, isConnected, connectedAddress, contractsKey]);
+  }, [isConnected, connectedAddress, contractsKey]);
 
   const handleRedeem = async (e: React.MouseEvent, contractAddress: `0x${string}`, marketId: number) => {
     // prevent parent Link navigation when clicking inside cards

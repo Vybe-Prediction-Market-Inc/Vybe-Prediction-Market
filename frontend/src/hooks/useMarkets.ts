@@ -1,125 +1,80 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { usePublicClient } from 'wagmi';
-import { VYBE_CONTRACT_ABI, discoverVybeContractsFromDeployers } from '@/lib/contract';
+import type { MarketSummary } from '@/lib/contract';
 
-export type RawMarketTuple = [
-  string,
-  string,
-  bigint,
-  bigint,
-  boolean,
-  boolean,
-  bigint,
-  bigint,
-];
+type ApiMarket = Omit<MarketSummary, 'yesPool' | 'noPool'> & {
+  yesPool: string;
+  noPool: string;
+};
 
-export interface MarketSummary {
-  contractAddress: `0x${string}`;
-  marketId: number;
-  question: string;
-  trackId: string;
-  threshold: number;
-  deadline: number;
-  resolved: boolean;
-  outcomeYes: boolean;
-  yesPool: bigint;
-  noPool: bigint;
+interface ApiResponse {
+  markets?: ApiMarket[];
+  error?: string;
+  source?: 'envio' | 'rpc';
 }
 
 export function useMarkets(pollMs: number = 15000) {
-  const client = usePublicClient();
-  const [addresses, setAddresses] = useState<`0x${string}`[]>([]);
   const [markets, setMarkets] = useState<MarketSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [version, setVersion] = useState(0);
-
-  // Discover contracts from deployer EOAs.
-  useEffect(() => {
-    if (!client) return;
-    let cancelled = false;
-    const discover = async () => {
-      try {
-        const found = await discoverVybeContractsFromDeployers(client);
-        if (!cancelled && found.length > 0) setAddresses(found);
-      } catch {
-        // ignore
-      }
-    };
-    discover();
-    return () => { cancelled = true; };
-  }, [client, addresses.length]);
+  const [source, setSource] = useState<'envio' | 'rpc' | null>(null);
 
   useEffect(() => {
-    if (!client || addresses.length === 0) return;
-
     let cancelled = false;
-    const run = async () => {
+
+    const run = async (force = false, showSpinner = true) => {
+      if (showSpinner && !cancelled) setLoading(true);
       try {
-        setLoading(true);
-        setError(null);
-        const all: MarketSummary[] = [];
-        for (const addr of addresses) {
-          // Check code exists
-          const bytecode = await client.getBytecode({ address: addr });
-          if (!bytecode || bytecode === '0x') continue;
-
-          const mc = await client.readContract({
-            address: addr,
-            abi: VYBE_CONTRACT_ABI,
-            functionName: 'marketCount',
-            args: [],
-          }) as bigint;
-          const total = Number(mc);
-          if (total === 0) continue;
-
-          const reads = Array.from({ length: total }, (_, i) =>
-            client.readContract({
-              address: addr,
-              abi: VYBE_CONTRACT_ABI,
-              functionName: 'getMarket',
-              args: [BigInt(i + 1)],
-            }) as Promise<RawMarketTuple>
-          );
-
-          const results = await Promise.all(reads);
-          for (let i = 0; i < results.length; i++) {
-            const [question, trackId, threshold, deadline, resolved, outcomeYes, yesPool, noPool] = results[i];
-            all.push({
-              contractAddress: addr,
-              marketId: i + 1,
-              question,
-              trackId,
-              threshold: Number(threshold),
-              deadline: Number(deadline),
-              resolved,
-              outcomeYes,
-              yesPool: yesPool,
-              noPool: noPool,
-            });
-          }
+        const qs = force ? '?force=1' : '';
+        const res = await fetch(`/api/markets${qs}`, { cache: 'no-store' });
+        if (!res.ok) {
+          throw new Error(`Request failed with status ${res.status}`);
         }
-        if (!cancelled) setMarkets(all);
-      } catch (e) {
-        if (!cancelled) setError((e as Error)?.message ?? 'Failed to load markets');
+        const data = (await res.json()) as ApiResponse;
+        if (!cancelled) {
+          const rows = data.markets ?? [];
+          setMarkets(
+            rows.map((row) => ({
+              ...row,
+              yesPool: BigInt(row.yesPool ?? '0'),
+              noPool: BigInt(row.noPool ?? '0'),
+            })),
+          );
+          setSource(data.source ?? null);
+          setError(null);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError((err as Error)?.message ?? 'Failed to load markets');
+        }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (showSpinner && !cancelled) setLoading(false);
       }
     };
-  run();
+
+    run(version > 0, true);
 
     let timer: ReturnType<typeof setInterval> | undefined;
     if (pollMs > 0) {
       timer = setInterval(() => {
-        if (!cancelled) run();
+        run(false, false);
       }, pollMs);
     }
 
-    return () => { cancelled = true; if (timer) clearInterval(timer); };
-  }, [client, addresses.join(','), pollMs, version]);
+    return () => {
+      cancelled = true;
+      if (timer) clearInterval(timer);
+    };
+  }, [pollMs, version]);
 
   const refresh = () => setVersion((v) => v + 1);
-  return { markets, loading, error, refresh };
+  const uniqueAddresses = useMemo(() => {
+    const next = new Set<`0x${string}`>();
+    markets.forEach((m) => next.add(m.contractAddress));
+    return Array.from(next).sort((a, b) => a.localeCompare(b));
+  }, [markets]);
+
+  return { markets, loading, error, refresh, source, contractAddresses: uniqueAddresses };
 }
