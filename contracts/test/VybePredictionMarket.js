@@ -1,5 +1,6 @@
-const { expect } = require("chai");
-const { ethers } = require("hardhat");
+import { expect } from "chai";
+import hre from "hardhat";
+import { ethers } from "ethers";
 
 describe("VybePredictionMarket", function () {
     async function deployFixture() {
