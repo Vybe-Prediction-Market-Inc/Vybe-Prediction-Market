@@ -1,7 +1,10 @@
 import hre from "hardhat";
 import path from "path";
 import dotenv from "dotenv";
-import fetch from "node-fetch"; // add if not global in Node.js 22+
+import { ethers } from "hre";
+import { ethers } from "hardhat";
+import { ethers } from "nomicfoundation/hardhat-ignition-ethers";
+import { ethers } from "@nomicfoundation/hardhat-ethers";
 
 // Load env from project root, then local as a secondary (won't override)
 dotenv.config({ path: path.resolve(__dirname, "..", "..", ".env") });

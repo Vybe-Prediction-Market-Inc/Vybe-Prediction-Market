@@ -1,6 +1,10 @@
-import { time, loadFixture, anyValue } from "@nomicfoundation/hardhat-toolbox-mocha-ethers/network-helpers";
+import { time, loadFixture } from "@nomicfoundation/hardhat-toolbox-mocha-ethers/network-helpers";
+import { anyValue } from "@nomicfoundation/hardhat-ethers-chai-matchers/withArgs";
 import { expect } from "chai";
+import { ethers } from "hre";
 import { ethers } from "hardhat";
+import { ethers } from "nomicfoundation/hardhat-ignition-ethers";
+import { ethers } from "@nomicfoundation/hardhat-ethers";
 
 describe("Lock", function () {
   // We define a fixture to reuse the same setup in every test.
