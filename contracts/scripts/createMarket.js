@@ -1,14 +1,47 @@
 const hre = require("hardhat");
 const axios = require("axios");
 const { URLSearchParams } = require("url");
+const fs = require("fs");
+const path = require("path");
 require("dotenv/config");
 
 const SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token";
 const SPOTIFY_SEARCH_URL = "https://api.spotify.com/v1/search";
+const HARDCODED_MARKET_BATCH = [
+    {
+        songName: "Like a Tattoo",
+        artistName: "Sade",
+        threshold: "250000",
+        deadlineSeconds: 120,
+        question: 'Will "Like a Tattoo" by Sade hit 250k plays in an hour?',
+    },
+    {
+        songName: "Duele Mas",
+        artistName: "Grupo Niche",
+        threshold: "150000",
+        deadlineSeconds: 120,
+        question: 'Will "Duele Mas" by Grupo Niche hit 150k plays in an hour?',
+    },
+];
+
+function getFlagValue(flag) {
+    const prefix = `${flag}=`;
+    const arg = process.argv.find((entry) => entry.startsWith(prefix));
+    return arg ? arg.slice(prefix.length) : undefined;
+}
+
+function getPositionalArgs() {
+    return process.argv.slice(2).filter((arg) => !arg.startsWith("--"));
+}
 
 function resolveInputs() {
-    const [, , argQuestion, argSong, argArtist, argThreshold, argDeadlineSecs] =
-        process.argv;
+    const [
+        argQuestion,
+        argSong,
+        argArtist,
+        argThreshold,
+        argDeadlineSecs,
+    ] = getPositionalArgs();
     const question = process.env.QUESTION || argQuestion || null;
     const songName = process.env.SONG_NAME || argSong;
     const artistName = process.env.ARTIST_NAME || argArtist;
@@ -45,6 +78,77 @@ function resolveInputs() {
     }
 
     return { question, songName, artistName, threshold, deadlineSeconds };
+}
+
+function resolveBatchSpecs() {
+    if (HARDCODED_MARKET_BATCH.length > 0) {
+        return HARDCODED_MARKET_BATCH.map((entry, idx) =>
+            normalizeBatchEntry(entry, idx)
+        );
+    }
+
+    const inlineFlag = getFlagValue("--markets");
+    const inline = inlineFlag || process.env.MARKET_BATCH;
+    const batchPath =
+        getFlagValue("--batch") || process.env.MARKET_BATCH_FILE || null;
+
+    let parsed = null;
+    if (batchPath) {
+        const absolute = path.isAbsolute(batchPath)
+            ? batchPath
+            : path.join(process.cwd(), batchPath);
+        const raw = fs.readFileSync(absolute, "utf8");
+        parsed = JSON.parse(raw);
+    } else if (inline) {
+        parsed = JSON.parse(inline);
+    }
+
+    if (!parsed) return [];
+    if (!Array.isArray(parsed)) {
+        throw new Error(
+            "MARKET_BATCH(_FILE) must resolve to an array of market specs."
+        );
+    }
+
+    return parsed.map((entry, idx) => normalizeBatchEntry(entry, idx));
+}
+
+function normalizeBatchEntry(entry, idx) {
+    const songName = entry.songName || entry.song || entry.trackName;
+    const artistName = entry.artistName || entry.artist;
+    const thresholdRaw = entry.threshold;
+    const deadlineSecondsRaw =
+        entry.deadlineSecs ?? entry.deadlineSeconds ?? entry.durationSecs ?? entry.duration;
+
+    if (!songName || !artistName) {
+        throw new Error(`Batch entry #${idx + 1} missing songName or artistName.`);
+    }
+    if (thresholdRaw === undefined || thresholdRaw === null) {
+        throw new Error(`Batch entry #${idx + 1} missing threshold.`);
+    }
+    if (deadlineSecondsRaw === undefined || deadlineSecondsRaw === null) {
+        throw new Error(`Batch entry #${idx + 1} missing deadlineSeconds.`);
+    }
+
+    const threshold = BigInt(thresholdRaw);
+    if (threshold <= 0n) {
+        throw new Error(`Batch entry #${idx + 1} has non-positive threshold.`);
+    }
+
+    const deadlineSeconds = Number(deadlineSecondsRaw);
+    if (!Number.isFinite(deadlineSeconds) || deadlineSeconds <= 0) {
+        throw new Error(
+            `Batch entry #${idx + 1} must have a positive numeric deadlineSeconds.`
+        );
+    }
+
+    return {
+        question: entry.question || null,
+        songName,
+        artistName,
+        threshold,
+        deadlineSeconds,
+    };
 }
 
 async function fetchClientCredentialsToken() {
@@ -138,30 +242,8 @@ async function main() {
         );
     }
 
-    const {
-        question: providedQuestion,
-        songName,
-        artistName,
-        threshold,
-        deadlineSeconds,
-    } =
-        resolveInputs();
-
-    console.log(
-        `Looking up Spotify track for "${songName}" by "${artistName}"...`
-    );
-    const track = await searchTrack(songName, artistName);
-    const trackId = track.id;
-    const canonicalName = track.name;
-    const artistList = (track.artists || []).map((a) => a.name).join(", ");
-
-    const latestBlock = await provider.getBlock("latest");
-    const now = latestBlock.timestamp;
-    const deadline = now + Number(deadlineSeconds);
-
-    const finalQuestion =
-        providedQuestion ||
-        `Will "${canonicalName}" by ${artistList} hit playback count >= ${threshold.toString()} in ${deadlineSeconds} seconds?`;
+    const batchSpecs = resolveBatchSpecs();
+    const singleSpec = batchSpecs.length === 0 ? [resolveInputs()] : batchSpecs;
 
     const [owner] = await hre.ethers.getSigners();
     const vybe = await hre.ethers.getContractAt(
@@ -169,26 +251,52 @@ async function main() {
         contractAddress
     );
 
-    console.log(
-        [
-            `Network: ${network}`,
-            `Contract: ${contractAddress}`,
-            `Owner signer: ${owner.address}`,
-            `Question: ${finalQuestion}`,
-            `Track ID: ${trackId}`,
-            `Threshold: ${threshold.toString()}`,
-            `Deadline: ${deadline} (now=${now}, +${deadlineSeconds}s)`,
-        ].join("\n")
-    );
+    for (let i = 0; i < singleSpec.length; i++) {
+        const {
+            question: providedQuestion,
+            songName,
+            artistName,
+            threshold,
+            deadlineSeconds,
+        } = singleSpec[i];
 
-    const tx = await vybe
-        .connect(owner)
-        .createMarket(finalQuestion, trackId, threshold, deadline);
-    const receipt = await tx.wait();
-    const marketId = await vybe.marketCount();
-    console.log(
-        `Market created! marketId=${marketId.toString()} txHash=${receipt.hash} block=${receipt.blockNumber}`
-    );
+        console.log(
+            `\n[${i + 1}/${singleSpec.length}] Looking up Spotify track for "${songName}" by "${artistName}"...`
+        );
+        const track = await searchTrack(songName, artistName);
+        const trackId = track.id;
+        const canonicalName = track.name;
+        const artistList = (track.artists || []).map((a) => a.name).join(", ");
+
+        const latestBlock = await provider.getBlock("latest");
+        const now = latestBlock.timestamp;
+        const deadline = now + Number(deadlineSeconds);
+
+        const finalQuestion =
+            providedQuestion ||
+            `Will "${canonicalName}" by ${artistList} hit playback count >= ${threshold.toString()} in ${deadlineSeconds} seconds?`;
+
+        console.log(
+            [
+                `Network: ${network}`,
+                `Contract: ${contractAddress}`,
+                `Owner signer: ${owner.address}`,
+                `Question: ${finalQuestion}`,
+                `Track ID: ${trackId}`,
+                `Threshold: ${threshold.toString()}`,
+                `Deadline: ${deadline} (now=${now}, +${deadlineSeconds}s)`,
+            ].join("\n")
+        );
+
+        const tx = await vybe
+            .connect(owner)
+            .createMarket(finalQuestion, trackId, threshold, deadline);
+        const receipt = await tx.wait();
+        const marketId = await vybe.marketCount();
+        console.log(
+            `Market created! marketId=${marketId.toString()} txHash=${receipt.hash} block=${receipt.blockNumber}`
+        );
+    }
 }
 
 main().catch((err) => {
