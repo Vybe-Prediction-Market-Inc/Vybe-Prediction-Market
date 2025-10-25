@@ -6,7 +6,6 @@ networks:
       contracts:
           - name: VybePredictionMarket
             address:
-                - 0x62B1885Ae883C48011c1F65F15feb17cfA6b4c19
                 - 0xDD865924542C3Eb6ddFeD0732a33a5c722D85Fe0
             handler: src/EventHandlers.ts
             events:
