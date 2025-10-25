@@ -1,8 +1,6 @@
 import { expect } from "chai";
-import { ethers } from "hre";
-import { ethers } from "hardhat";
-import { ethers } from "nomicfoundation/hardhat-ignition-ethers";
-import { ethers } from "@nomicfoundation/hardhat-ethers";
+import hre from "hardhat";
+import { ethers } from "ethers";
 
 describe("VybePredictionMarket", function () {
     async function deployFixture() {

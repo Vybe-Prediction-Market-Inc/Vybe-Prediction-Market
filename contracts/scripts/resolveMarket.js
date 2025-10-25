@@ -5,7 +5,8 @@ async function main() {
   // Connect explicitly to network (Hardhat 3)
   const connection = await hre.network.connect();
   const provider = connection.ethers.provider;
-  const [deployer, oracle] = await connection.ethers.getSigners();
+  const [deployer] = await connection.ethers.getSigners();
+  const oracle = deployer;
 
   const network = hre.network?.name || "unknown";
   const { chainId } = await provider.getNetwork();
@@ -35,19 +36,12 @@ async function main() {
     );
   }
 
-  // Use compiled ABI and connect to contract
+
   const vybe = await connection.ethers.getContractAt("VybePredictionMarket", addr);
 
-  // Check oracle
-  const configuredOracle = await vybe.oracle();
-  const oracleSigner = oracle || deployer;
-  if (configuredOracle.toLowerCase() !== oracleSigner.address.toLowerCase()) {
-    console.warn(
-      `Warning: current oracle(${configuredOracle}) != signer(${oracleSigner.address}). resolveMarket may revert with 'not oracle'.`
-    );
-  }
+  console.log(`Oracle and deployer both: ${oracle.address}`);
 
-  // Check deadline
+  // Deadline check for debugging
   const before = await vybe.getMarket(marketId);
   const deadline = Number(before[3]);
   const now = (await provider.getBlock("latest")).timestamp;
@@ -62,7 +56,7 @@ async function main() {
   );
 
   // Resolve
-  const tx = await vybe.connect(oracleSigner).resolveMarket(marketId, observed);
+  const tx = await vybe.connect(deployer).resolveMarket(marketId, observed);
   const rcpt = await tx.wait();
   console.log(`TxHash=${rcpt.hash} Block=${rcpt.blockNumber}`);
 
@@ -83,17 +77,13 @@ async function main() {
       `Resolved event: marketId=${evId.toString()} outcomeYes=${outcomeYes} yesPool=${yesPool.toString()} noPool=${noPool.toString()}`
     );
   } else {
-    console.warn(
-      "Resolved event not found in receipt logs. Verify ABI/network and filters."
-    );
+    console.warn("Resolved event not found in receipt logs. Verify ABI/network and filters.");
   }
 
   // Final state
   const after = await vybe.getMarket(marketId);
   console.log(
-    `Final state -> resolved=${after[4]} outcomeYes=${
-      after[5]
-    } yesPool=${after[6].toString()} noPool=${after[7].toString()}`
+    `Final state -> resolved=${after[4]} outcomeYes=${after[5]} yesPool=${after[6].toString()} noPool=${after[7].toString()}`
   );
 }
 

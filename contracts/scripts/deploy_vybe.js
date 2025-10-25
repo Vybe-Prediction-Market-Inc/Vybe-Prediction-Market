@@ -102,7 +102,8 @@ async function main() {
 
   const connection = await hre.network.connect();
 
-  const [deployer, oracle] = await connection.ethers.getSigners();
+  const [deployer] = await connection.ethers.getSigners();
+  const oracle = deployer;
 
   const Vybe = await connection.ethers.getContractFactory("VybePredictionMarket");
   const vybe = await Vybe.deploy(oracle.address);
@@ -120,7 +121,7 @@ async function main() {
 
   const question = `Will "${canonicalName}" by ${primaryArtists} hit playback count >= ${threshold} in ${seconds}s?`;
 
-  const tx = await vybe.createMarket(question, trackId, threshold, deadline);
+  const tx = await vybe.connect(deployer).createMarket(question, trackId, threshold, deadline);
   const rcpt = await tx.wait();
   const marketId = await vybe.marketCount();
 
