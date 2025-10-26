@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { useAccount, usePublicClient, useWriteContract } from 'wagmi';
 import { parseEther, formatEther } from 'viem';
 import { VYBE_CONTRACT_ABI, discoverVybeContractsFromDeployers } from '@/lib/contract';
+import { useMarketByIdFromGraphQL, useUserBetForMarketFromGraphQL } from '@/hooks/useGraphQLData';
 
 interface Market {
   id: number;
@@ -15,27 +16,16 @@ interface Market {
   deadline: number;
   resolved: boolean;
   outcomeYes: boolean;
-  yesPool: bigint;
-  noPool: bigint;
+  yesPool: string;
+  noPool: string;
 }
 
 interface BetInfo {
   marketId: number;
   betYes: boolean;
-  amount: bigint;
+  amount: string;
   claimed: boolean;
 }
-
-type MarketTuple = [
-  string,
-  string,
-  bigint,
-  bigint,
-  boolean,
-  boolean,
-  bigint,
-  bigint
-];
 
 export default function EventPageContent() {
   const search = useSearchParams();
@@ -45,12 +35,53 @@ export default function EventPageContent() {
   const { writeContractAsync } = useWriteContract();
   const { address: connectedAddress, isConnected } = useAccount();
 
-  const [market, setMarket] = useState<Market | null>(null);
-  const [userBet, setUserBet] = useState<BetInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const [redeeming, setRedeeming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [addr, setAddr] = useState<`0x${string}` | null>(fromUrl && fromUrl.startsWith('0x') ? fromUrl : null);
+
+  // Use GraphQL hooks for data fetching
+  const { market: graphqlMarket, loading: marketLoading, error: marketError } = useMarketByIdFromGraphQL(id);
+  const { bet: graphqlBet, loading: betLoading } = useUserBetForMarketFromGraphQL(connectedAddress, id);
+
+  const [market, setMarket] = useState<Market | null>(null);
+  const [userBet, setUserBet] = useState<BetInfo | null>(null);
+
+  // Convert GraphQL market data to local format
+  useEffect(() => {
+    if (graphqlMarket) {
+      setMarket({
+        id,
+        question: graphqlMarket.question,
+        trackId: graphqlMarket.trackId,
+        threshold: Number(graphqlMarket.threshold),
+        deadline: Number(graphqlMarket.deadline),
+        resolved: graphqlMarket.resolved,
+        outcomeYes: graphqlMarket.outcomeYes ?? false,
+        yesPool: graphqlMarket.yesPool ?? '0',
+        noPool: graphqlMarket.noPool ?? '0',
+      });
+    }
+  }, [graphqlMarket, id]);
+
+  // Convert GraphQL bet data to local format
+  useEffect(() => {
+    if (graphqlBet) {
+      setUserBet({
+        marketId: id,
+        betYes: graphqlBet.betYes,
+        amount: graphqlBet.amount,
+        claimed: graphqlBet.claimed,
+      });
+    }
+  }, [graphqlBet, id]);
+
+  // Set error from GraphQL
+  useEffect(() => {
+    if (marketError) {
+      setError(marketError);
+    }
+  }, [marketError]);
 
   // If no address from URL or env, try to discover from configured deployers
   useEffect(() => {
@@ -70,111 +101,6 @@ export default function EventPageContent() {
     run();
     return () => { cancelled = true; };
   }, [addr, client]);
-
-  // --- Fetch Market Data ---
-  useEffect(() => {
-    if (!client) return;
-
-    const fetchMarket = async () => {
-      try {
-        setError(null);
-        // Preflight checks to avoid `returned no data (0x)`
-        if (!addr) {
-          setError('Contract address not set or discoverable. Provide NEXT_PUBLIC_DEPLOYER_ADDRESS[ES], or open this page with ?address=0x...');
-          return;
-        }
-
-        const chainId = await client.getChainId();
-        console.log('[Event] chainId=', chainId, 'address=', addr, 'marketId=', id);
-
-        const bytecode = await client.getBytecode({ address: addr });
-        if (!bytecode || bytecode === '0x') {
-          setError(`No contract code found at ${addr}. Is the node fresh and was the contract deployed to this chain?`);
-          return;
-        }
-
-        const mc = await client.readContract({
-          address: addr,
-          abi: VYBE_CONTRACT_ABI,
-          functionName: 'marketCount',
-          args: [],
-        }) as bigint;
-        if (mc === BigInt(0)) {
-          setError('No markets exist yet. Run the deploy script to create a demo market.');
-          return;
-        }
-        if (BigInt(id) > mc) {
-          setError(`Market ${id} does not exist (marketCount=${mc}).`);
-          return;
-        }
-
-        const result = await client.readContract({
-          address: addr,
-          abi: VYBE_CONTRACT_ABI,
-          functionName: 'getMarket',
-          args: [BigInt(id)],
-        }) as MarketTuple;
-
-        const [
-          question,
-          trackId,
-          threshold,
-          deadline,
-          resolved,
-          outcomeYes,
-          yesPool,
-          noPool,
-        ] = result;
-
-        setMarket({
-          id,
-          question,
-          trackId,
-          threshold: Number(threshold),
-          deadline: Number(deadline),
-          resolved,
-          outcomeYes,
-          yesPool: yesPool,
-          noPool: noPool,
-        });
-      } catch (err) {
-        console.error('Error fetching market:', err);
-        setError((err as Error)?.message ?? 'Failed to fetch market');
-      }
-    };
-
-    fetchMarket();
-  }, [client, id, addr]);
-
-  // --- Fetch user's bet info (to check if already claimed) ---
-  useEffect(() => {
-    if (!client || !isConnected || !connectedAddress || !addr) return;
-
-    const loadUserBet = async () => {
-      try {
-        const result = await client.readContract({
-          address: addr,
-          abi: VYBE_CONTRACT_ABI,
-          functionName: 'getUserBets',
-          args: [connectedAddress],
-        }) as any[];
-
-        const parsed = result.map((b: any) => ({
-          marketId: Number(b.marketId),
-          betYes: b.betYes,
-          amount: b.amount as bigint,
-          claimed: b.claimed,
-        })) as BetInfo[];
-
-        const thisMarketBet = parsed.find((b) => b.marketId === id);
-        if (thisMarketBet) setUserBet(thisMarketBet);
-      } catch (err) {
-        console.error('Error loading user bet:', err);
-      }
-    };
-
-    loadUserBet();
-  }, [client, connectedAddress, id, isConnected, addr]);
 
   // --- Place Bet ---
   const handleBet = async (betYes: boolean) => {
@@ -257,7 +183,7 @@ export default function EventPageContent() {
       </div>
     );
 
-  if (!market) return <p className="p-8 text-center">Loading market...</p>;
+  if (!market || marketLoading) return <p className="p-8 text-center">Loading market...</p>;
 
   const nowSec = Math.floor(Date.now() / 1000);
   const isClosed = market.resolved || market.deadline <= nowSec;
@@ -280,8 +206,8 @@ export default function EventPageContent() {
           )}
 
           <div className="mt-4 text-sm">
-            <div>Yes Pool: {formatEther(market.yesPool)} ETH</div>
-            <div>No Pool: {formatEther(market.noPool)} ETH</div>
+            <div>Yes Pool: {formatEther(BigInt(market.yesPool))} ETH</div>
+            <div>No Pool: {formatEther(BigInt(market.noPool))} ETH</div>
           </div>
 
           {/* Bet buttons */}
