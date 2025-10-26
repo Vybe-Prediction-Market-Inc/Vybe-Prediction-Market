@@ -1,26 +1,21 @@
-const hre = require("hardhat");
-const axios = require("axios");
-const { URLSearchParams } = require("url");
-const fs = require("fs");
-const path = require("path");
-require("dotenv/config");
+import hre from "hardhat";
+import axios from "axios";
+import { URLSearchParams } from "url";
+import fs from "fs";
+import path from "path";
+import "dotenv/config";
 
 const SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token";
 const SPOTIFY_SEARCH_URL = "https://api.spotify.com/v1/search";
 const HARDCODED_MARKET_BATCH = [
+
     {
-        songName: "Like a Tattoo",
-        artistName: "Sade",
-        threshold: "250000",
-        deadlineSeconds: 120,
-        question: 'Will "Like a Tattoo" by Sade hit 250k plays in an hour?',
-    },
-    {
-        songName: "Duele Mas",
+        songName: "Sin sentimientos",
         artistName: "Grupo Niche",
         threshold: "150000",
         deadlineSeconds: 120,
-        question: 'Will "Duele Mas" by Grupo Niche hit 150k plays in an hour?',
+        question:
+            'Will "Sin sentimientos" by Grupo Niche hit 150k plays in 2 min?',
     },
 ];
 
@@ -35,21 +30,14 @@ function getPositionalArgs() {
 }
 
 function resolveInputs() {
-    const [
-        argQuestion,
-        argSong,
-        argArtist,
-        argThreshold,
-        argDeadlineSecs,
-    ] = getPositionalArgs();
+    const [argQuestion, argSong, argArtist, argThreshold, argDeadlineSecs] =
+        getPositionalArgs();
     const question = process.env.QUESTION || argQuestion || null;
     const songName = process.env.SONG_NAME || argSong;
     const artistName = process.env.ARTIST_NAME || argArtist;
     const thresholdRaw = process.env.THRESHOLD || argThreshold;
     const deadlineSecsRaw =
-        process.env.DEADLINE_SECS ||
-        process.env.DURATION ||
-        argDeadlineSecs;
+        process.env.DEADLINE_SECS || process.env.DURATION || argDeadlineSecs;
 
     if (!songName || !artistName) {
         throw new Error(
@@ -118,10 +106,15 @@ function normalizeBatchEntry(entry, idx) {
     const artistName = entry.artistName || entry.artist;
     const thresholdRaw = entry.threshold;
     const deadlineSecondsRaw =
-        entry.deadlineSecs ?? entry.deadlineSeconds ?? entry.durationSecs ?? entry.duration;
+        entry.deadlineSecs ??
+        entry.deadlineSeconds ??
+        entry.durationSecs ??
+        entry.duration;
 
     if (!songName || !artistName) {
-        throw new Error(`Batch entry #${idx + 1} missing songName or artistName.`);
+        throw new Error(
+            `Batch entry #${idx + 1} missing songName or artistName.`
+        );
     }
     if (thresholdRaw === undefined || thresholdRaw === null) {
         throw new Error(`Batch entry #${idx + 1} missing threshold.`);
@@ -138,7 +131,9 @@ function normalizeBatchEntry(entry, idx) {
     const deadlineSeconds = Number(deadlineSecondsRaw);
     if (!Number.isFinite(deadlineSeconds) || deadlineSeconds <= 0) {
         throw new Error(
-            `Batch entry #${idx + 1} must have a positive numeric deadlineSeconds.`
+            `Batch entry #${
+                idx + 1
+            } must have a positive numeric deadlineSeconds.`
         );
     }
 
@@ -222,6 +217,7 @@ async function searchTrack(songName, artistName) {
 }
 
 async function main() {
+    const connection = await hre.network.connect();
     const network = hre.network?.name || "unknown";
     const contractAddress =
         process.env.MARKET_ADDRESS ||
@@ -234,7 +230,7 @@ async function main() {
         );
     }
 
-    const provider = hre.ethers.provider;
+    const provider = connection.ethers.provider;
     const code = await provider.getCode(contractAddress);
     if (!code || code === "0x") {
         throw new Error(
@@ -245,8 +241,8 @@ async function main() {
     const batchSpecs = resolveBatchSpecs();
     const singleSpec = batchSpecs.length === 0 ? [resolveInputs()] : batchSpecs;
 
-    const [owner] = await hre.ethers.getSigners();
-    const vybe = await hre.ethers.getContractAt(
+    const [owner] = await connection.ethers.getSigners();
+    const vybe = await connection.ethers.getContractAt(
         "VybePredictionMarket",
         contractAddress
     );
@@ -261,7 +257,9 @@ async function main() {
         } = singleSpec[i];
 
         console.log(
-            `\n[${i + 1}/${singleSpec.length}] Looking up Spotify track for "${songName}" by "${artistName}"...`
+            `\n[${i + 1}/${
+                singleSpec.length
+            }] Looking up Spotify track for "${songName}" by "${artistName}"...`
         );
         const track = await searchTrack(songName, artistName);
         const trackId = track.id;
@@ -294,7 +292,9 @@ async function main() {
         const receipt = await tx.wait();
         const marketId = await vybe.marketCount();
         console.log(
-            `Market created! marketId=${marketId.toString()} txHash=${receipt.hash} block=${receipt.blockNumber}`
+            `Market created! marketId=${marketId.toString()} txHash=${
+                receipt.hash
+            } block=${receipt.blockNumber}`
         );
     }
 }

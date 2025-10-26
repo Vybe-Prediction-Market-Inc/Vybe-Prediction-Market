@@ -9,6 +9,7 @@
         "deploy_vybe": "hardhat run scripts/deploy_vybe.js --network localhost",
         "list_markets": "hardhat run scripts/list_markets.js --network localhost",
         "e2e": "hardhat run scripts/e2e_demo.js --network localhost",
+        "resolve_with_rapidapi": "hardhat run scripts/resolveWithRapidApi.js --network localhost",
         "test": "echo \"Error: no test specified\" && exit 1"
     },
     "devDependencies": {

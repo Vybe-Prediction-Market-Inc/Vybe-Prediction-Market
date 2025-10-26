@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { usePublicClient } from 'wagmi';
-import { VYBE_CONTRACT_ABI, discoverVybeContractsFromDeployers } from '@/lib/contract';
+import { VYBE_CONTRACT_ABI, discoverVybeContracts } from '@/lib/contract';
 
 export type RawMarketTuple = [
   string,
@@ -36,21 +36,28 @@ export function useMarkets(pollMs: number = 15000) {
   const [error, setError] = useState<string | null>(null);
   const [version, setVersion] = useState(0);
 
-  // Discover contracts from deployer EOAs.
+  // Discover live VybePredictionMarket contracts automatically.
   useEffect(() => {
     if (!client) return;
     let cancelled = false;
     const discover = async () => {
       try {
-        const found = await discoverVybeContractsFromDeployers(client);
-        if (!cancelled && found.length > 0) setAddresses(found);
-      } catch {
-        // ignore
+        const found = await discoverVybeContracts(client);
+        if (!cancelled) {
+          setAddresses(found);
+          if (found.length === 0) {
+            setError('No Vybe markets found. Deploy a contract first.');
+          }
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError((err as Error)?.message ?? 'Failed to discover Vybe contracts');
+        }
       }
     };
     discover();
     return () => { cancelled = true; };
-  }, [client, addresses.length]);
+  }, [client]);
 
   useEffect(() => {
     if (!client || addresses.length === 0) return;
@@ -101,7 +108,12 @@ export function useMarkets(pollMs: number = 15000) {
             });
           }
         }
-        if (!cancelled) setMarkets(all);
+        if (!cancelled) {
+          setMarkets(all);
+          if (all.length === 0) {
+            setError('No markets created yet.');
+          }
+        }
       } catch (e) {
         if (!cancelled) setError((e as Error)?.message ?? 'Failed to load markets');
       } finally {

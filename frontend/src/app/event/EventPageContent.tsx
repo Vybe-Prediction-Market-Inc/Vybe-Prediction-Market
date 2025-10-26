@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useAccount, usePublicClient, useWriteContract } from 'wagmi';
 import { parseEther, formatEther } from 'viem';
-import { VYBE_CONTRACT_ABI, discoverVybeContractsFromDeployers } from '@/lib/contract';
+import { VYBE_CONTRACT_ABI, discoverVybeContracts } from '@/lib/contract';
 
 interface Market {
   id: number;
@@ -52,13 +52,13 @@ export default function EventPageContent() {
   const [error, setError] = useState<string | null>(null);
   const [addr, setAddr] = useState<`0x${string}` | null>(fromUrl && fromUrl.startsWith('0x') ? fromUrl : null);
 
-  // If no address from URL or env, try to discover from configured deployers
+  // If no address from URL or env, try to discover automatically
   useEffect(() => {
     if (addr || !client) return;
     let cancelled = false;
     const run = async () => {
       try {
-        const discovered = await discoverVybeContractsFromDeployers(client);
+        const discovered = await discoverVybeContracts(client);
         if (!cancelled && discovered.length > 0) {
           // pick the most recent (last) discovered contract
           setAddr(discovered[discovered.length - 1]);
@@ -80,7 +80,7 @@ export default function EventPageContent() {
         setError(null);
         // Preflight checks to avoid `returned no data (0x)`
         if (!addr) {
-          setError('Contract address not set or discoverable. Provide NEXT_PUBLIC_DEPLOYER_ADDRESS[ES], or open this page with ?address=0x...');
+          setError('Contract address not set or discoverable. Deploy a market or pass ?address=0x... to load a specific contract.');
           return;
         }
 
@@ -200,7 +200,7 @@ export default function EventPageContent() {
         functionName,
         args: [BigInt(id)],
         account: connectedAddress,
-        value: parseEther('0.1'),
+        value: parseEther('0.001'),
       });
       const tx = await writeContractAsync({ ...sim.request });
       console.log('Bet tx:', tx);
@@ -293,7 +293,7 @@ export default function EventPageContent() {
               }
               className={`btn rounded-full ${userBet?.betYes === true ? 'btn-primary' : 'btn-outline'}`}
             >
-              {loading ? 'Processing...' : (isClosed ? 'Betting closed' : 'Bet Yes (0.1 ETH)')}
+              {loading ? 'Processing...' : (isClosed ? 'Betting closed' : 'Bet Yes (0.001 ETH)')}
             </button>
 
             <button
@@ -303,7 +303,7 @@ export default function EventPageContent() {
               }
               className={`btn rounded-full ${userBet?.betYes === false ? 'btn-ghost' : 'btn-outline'}`}
             >
-              {loading ? 'Processing...' : (isClosed ? 'Betting closed' : 'Bet No (0.1 ETH)')}
+              {loading ? 'Processing...' : (isClosed ? 'Betting closed' : 'Bet No (0.001 ETH)')}
             </button>
           </div>
 
