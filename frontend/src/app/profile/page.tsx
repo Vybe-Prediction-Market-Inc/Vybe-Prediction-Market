@@ -15,9 +15,7 @@ export default function ProfilePage() {
           <div className="mt-6 grid sm:grid-cols-2 gap-6">
             <div className="rounded-xl border border-white/10 p-4 bg-white/5">
               <div className="text-sm muted">Wallet</div>
-              <div className="mt-1 font-mono">
-                {isConnected ? address : 'Not connected'}
-              </div>
+              <div className="mt-1 font-mono">{isConnected ? address : 'Not connected'}</div>
             </div>
 
             <div className="rounded-xl border border-white/10 p-4 bg-white/5">
@@ -31,7 +29,7 @@ export default function ProfilePage() {
       <section className="mt-6 space-y-4">
         <h2 className="h2">Recent Activity</h2>
         <div className="grid md:grid-cols-2 gap-4">
-          {[1, 2, 3, 4].map(i => (
+          {[1, 2, 3, 4].map((i) => (
             <div key={i} className="rounded-xl border border-white/10 p-4 bg-white/5">
               <div className="text-sm muted">Trade #{i}</div>
               <div className="mt-1">Bought “YES” @ 0.62 on BTC $100k</div>
