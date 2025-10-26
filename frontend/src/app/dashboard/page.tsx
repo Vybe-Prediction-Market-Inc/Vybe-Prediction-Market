@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAccount, usePublicClient } from 'wagmi';
 import { formatEther } from 'viem';
-import { VYBE_CONTRACT_ABI, discoverVybeContractsFromDeployers } from '@/lib/contract';
+import { VYBE_CONTRACT_ABI, discoverVybeContracts } from '@/lib/contract';
 
 interface Bet {
   contractAddress: `0x${string}`;
@@ -58,7 +58,7 @@ export default function DashboardPage() {
 
     const loadBets = async () => {
       try {
-        const addrs = await discoverVybeContractsFromDeployers(client);
+        const addrs = await discoverVybeContracts(client);
         const all: Bet[] = [];
         for (const addr of addrs) {
           const bytecode = await client.getBytecode({ address: addr });

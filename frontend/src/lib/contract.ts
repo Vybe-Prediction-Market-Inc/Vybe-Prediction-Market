@@ -1,4 +1,4 @@
-import { Abi, type PublicClient } from "viem";
+import { Abi, type AbiEvent, type PublicClient } from "viem";
 
 export const VYBE_CONTRACT_ABI: Abi = [
   {
@@ -76,98 +76,120 @@ export const VYBE_CONTRACT_ABI: Abi = [
   },
 ];
 
-// NOTE: We intentionally do not support passing contract addresses via env.
-// Configure ONLY deployer EOA(s) and we will discover all deployed Vybe contracts.
+const MARKET_CREATED_EVENT = VYBE_CONTRACT_ABI.find(
+  (entry): entry is AbiEvent => entry.type === 'event' && entry.name === 'MarketCreated'
+);
 
-// Alternative config: specify deployer EOAs and we’ll discover contracts they created.
-// Supports NEXT_PUBLIC_DEPLOYER_ADDRESSES (JSON/CSV) or NEXT_PUBLIC_DEPLOYER_ADDRESS.
-export function getConfiguredDeployerAddresses(): (`0x${string}`)[] {
-  const multi = process.env.NEXT_PUBLIC_DEPLOYER_ADDRESSES;
-  const single = process.env.NEXT_PUBLIC_DEPLOYER_ADDRESS as `0x${string}` | undefined;
-  const addrs: (`0x${string}`)[] = [];
+type HexAddress = `0x${string}`;
 
-  if (multi && multi.trim().length > 0) {
-    try {
-      const parsed = JSON.parse(multi);
-      if (Array.isArray(parsed)) {
-        for (const a of parsed) {
-          if (typeof a === 'string' && a.startsWith('0x')) addrs.push(a as `0x${string}`);
-        }
-      }
-    } catch {
-      const parts = multi.split(',').map((s) => s.trim()).filter(Boolean);
-      for (const p of parts) if (p.startsWith('0x')) addrs.push(p as `0x${string}`);
+function parseAddressList(raw?: string | null): HexAddress[] {
+  if (!raw || raw.trim().length === 0) return [];
+  const trimmed = raw.trim();
+  const addrs: HexAddress[] = [];
+  const pushIfValid = (value: unknown) => {
+    if (typeof value === 'string' && value.startsWith('0x') && value.length === 42) {
+      addrs.push(value as HexAddress);
     }
+  };
+
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (Array.isArray(parsed)) {
+      parsed.forEach(pushIfValid);
+      return addrs;
+    }
+    if (typeof parsed === 'string') {
+      pushIfValid(parsed);
+      return addrs;
+    }
+  } catch {
+    // fall through to CSV parsing
   }
 
-  if (addrs.length === 0 && single) addrs.push(single);
+  trimmed
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .forEach(pushIfValid);
+
   return addrs;
 }
 
-// Discover VybePredictionMarket contract addresses by scanning blocks for contract creations
-// from the configured deployer EOAs. On local Hardhat this is fast; for larger chains, set
-// NEXT_PUBLIC_SCAN_START_BLOCK or NEXT_PUBLIC_SCAN_BLOCKS to bound scanning.
-export async function discoverVybeContractsFromDeployers(
+export function getConfiguredContractAddresses(): HexAddress[] {
+  const envMulti =
+    process.env.NEXT_PUBLIC_VYBE_CONTRACT_ADDRESSES ??
+    process.env.VYBE_CONTRACT_ADDRESSES;
+  const envSingle =
+    process.env.NEXT_PUBLIC_VYBE_CONTRACT_ADDRESS ??
+    process.env.VYBE_CONTRACT_ADDRESS;
+
+  const addrs = parseAddressList(envMulti);
+  if (addrs.length === 0 && envSingle && envSingle.startsWith('0x')) {
+    addrs.push(envSingle as HexAddress);
+  }
+  return addrs;
+}
+
+async function validateContracts(
+  client: PublicClient,
+  addresses: HexAddress[]
+): Promise<HexAddress[]> {
+  if (addresses.length === 0) return [];
+  const checks = addresses.map(async (addr) => {
+    try {
+      const bytecode = await client.getBytecode({ address: addr });
+      if (!bytecode || bytecode === '0x') return null;
+      await client.readContract({
+        address: addr,
+        abi: VYBE_CONTRACT_ABI,
+        functionName: 'marketCount',
+        args: [],
+      });
+      return addr;
+    } catch {
+      return null;
+    }
+  });
+  const results = await Promise.all(checks);
+  return results.filter((addr): addr is HexAddress => !!addr);
+}
+
+// Discover VybePredictionMarket contract addresses by scanning MarketCreated
+// logs (preferred) or by using explicitly configured addresses.
+export async function discoverVybeContracts(
   client: PublicClient,
   opts?: { startBlock?: bigint; maxBlocks?: number }
-): Promise<(`0x${string}`)[]> {
+): Promise<HexAddress[]> {
+  // 1) Respect explicitly configured contract addresses for deterministic envs.
+  const configured = await validateContracts(client, getConfiguredContractAddresses());
+  if (configured.length > 0) return configured;
+
+  // 2) Fallback to log-based discovery.
   const latest = await client.getBlockNumber();
   const envStart = process.env.NEXT_PUBLIC_SCAN_START_BLOCK;
   const envMax = process.env.NEXT_PUBLIC_SCAN_BLOCKS;
-  const maxBlocks = opts?.maxBlocks ?? (envMax ? Number(envMax) : 2000);
-  let startBlock: bigint;
-  if (opts?.startBlock !== undefined) startBlock = opts.startBlock;
-  else if (envStart && envStart.trim()) startBlock = BigInt(envStart);
-  else startBlock = latest > BigInt(maxBlocks) ? (latest - BigInt(maxBlocks)) : BigInt(0);
-  const found = new Set<`0x${string}`>();
+  const maxBlocks = opts?.maxBlocks ?? (envMax ? Number(envMax) : 5000);
+  const minBlock = latest > BigInt(maxBlocks) ? latest - BigInt(maxBlocks) : BigInt(0);
+  const fromBlock =
+    opts?.startBlock ??
+    (envStart && envStart.trim().length > 0 ? BigInt(envStart) : minBlock);
 
-  // 1) Prefer log-based discovery (much cheaper): query MarketCreated logs across range.
+  if (!MARKET_CREATED_EVENT) return [];
+
   try {
     const logs = await client.getLogs({
-      fromBlock: startBlock,
+      fromBlock,
       toBlock: latest,
-      event: VYBE_CONTRACT_ABI.find((e: any) => e.type === 'event' && e.name === 'MarketCreated') as any,
-      // address omitted so we capture from all Vybe deployments in the range
+      event: MARKET_CREATED_EVENT,
     });
-    for (const log of logs) {
-      const addr = log.address as `0x${string}`;
-      try {
-        // Verify a simple read to ensure it's the correct contract ABI
-        await client.readContract({ address: addr, abi: VYBE_CONTRACT_ABI, functionName: 'marketCount', args: [] });
-        found.add(addr);
-      } catch {
-        // ignore non-matching addresses
-      }
-    }
-    if (found.size > 0) return Array.from(found);
-  } catch {
-    // ignore and fall back
+    const unique = Array.from(
+      new Set(logs.map((log) => log.address as HexAddress))
+    );
+    const validated = await validateContracts(client, unique);
+    if (validated.length > 0) return validated;
+  } catch (err) {
+    console.warn('Vybe contract auto-discovery via logs failed:', err);
   }
 
-  // 2) Fallback: scan deployer-created contract addresses (heavier, but works locally)
-  const deployers = new Set(getConfiguredDeployerAddresses().map((a) => a.toLowerCase()));
-  if (deployers.size === 0) return [];
-
-  for (let bn = startBlock; bn <= latest; bn = bn + BigInt(1)) {
-    const block = await client.getBlock({ blockNumber: bn, includeTransactions: true });
-    const txs = block.transactions as any[];
-    for (const tx of txs) {
-      const toNull = !tx.to || tx.to === null;
-      const from = (tx.from as string | undefined)?.toLowerCase();
-      if (!toNull || !from || !deployers.has(from)) continue;
-      try {
-        const receipt = await client.getTransactionReceipt({ hash: tx.hash });
-        const addr = receipt.contractAddress as `0x${string}` | null;
-        if (!addr) continue;
-        const code = await client.getBytecode({ address: addr });
-        if (!code || code === '0x') continue;
-        await client.readContract({ address: addr, abi: VYBE_CONTRACT_ABI, functionName: 'marketCount', args: [] });
-        found.add(addr);
-      } catch {
-        // ignore non-matching contracts or read failures
-      }
-    }
-  }
-
-  return Array.from(found);
+  return [];
 }
