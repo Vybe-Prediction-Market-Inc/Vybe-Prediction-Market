@@ -18,7 +18,7 @@ Replace the URL with your actual Envio/Hasura GraphQL endpoint.
 
 ### 1. Schema Updates
 
-The Envio schema (`envio/schema.graphql`) has been updated to use `numeric` types instead of `BigInt` for Hasura compatibility:
+The Envio schema (located at `envio/schema.graphql` from the project root) has been updated to use `numeric` types instead of `BigInt` for Hasura compatibility:
 
 - `marketId: numeric!`
 - `amount: numeric!`
@@ -98,7 +98,7 @@ Blockchain Events → Envio Indexer → Hasura/PostgreSQL → GraphQL API → Fr
 - Ensure the schema matches the queries
 
 ### TypeScript errors with BigInt
-- Ensure `tsconfig.json` has `"target": "ES2020"` or higher
+- Ensure `frontend/tsconfig.json` has `"target": "ES2020"` or higher
 
 ### Claimed status not showing correctly
 - Verify both BetPlaced and Redeemed events are being indexed
