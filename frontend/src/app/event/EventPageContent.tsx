@@ -1,11 +1,13 @@
-
 'use client';
+
 
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { useAccount, usePublicClient, useWriteContract } from 'wagmi';
+import { useAccount, useWriteContract } from 'wagmi';
 import { parseEther, formatEther } from 'viem';
-import { VYBE_CONTRACT_ABI, discoverVybeContractsFromDeployers } from '@/lib/contract';
+import { VYBE_CONTRACT_ABI } from '@/lib/contract';
+import { GraphQLClient, gql } from 'graphql-request';
+
 
 interface Market {
   id: number;
@@ -19,6 +21,7 @@ interface Market {
   noPool: bigint;
 }
 
+
 interface BetInfo {
   marketId: number;
   betYes: boolean;
@@ -26,242 +29,216 @@ interface BetInfo {
   claimed: boolean;
 }
 
-type MarketTuple = [
-  string,
-  string,
-  bigint,
-  bigint,
-  boolean,
-  boolean,
-  bigint,
-  bigint
-];
+
+const GRAPHQL_ENDPOINT = 'https://indexer.dev.hyperindex.xyz/4cd5ec2/v1/graphql';
+
+
+const MARKET_QUERY = gql`
+  query Market($marketId: numeric!) {
+    VybePredictionMarket_MarketCreated(where: { marketId: { _eq: $marketId } }) {
+      id
+      marketId
+      question
+      trackId
+      threshold
+      deadline
+    }
+    VybePredictionMarket_Resolved(where: { marketId: { _eq: $marketId } }) {
+      outcomeYes
+      yesPool
+      noPool
+    }
+  }
+`;
+
+
+const USER_BETS_QUERY = gql`
+  query UserBets($user: String!, $marketId: numeric!) {
+  VybePredictionMarket_BetPlaced(
+    where: {
+      user: { _eq: $user },
+      marketId: { _eq: $marketId }
+    }
+  ) {
+    marketId
+    yes
+    amount
+  }
+
+  VybePredictionMarket_Redeemed(
+    where: {
+      user: { _eq: $user },
+      marketId: { _eq: $marketId }
+    }
+  ) {
+    payout
+  }
+}
+`;
+
 
 export default function EventPageContent() {
   const search = useSearchParams();
   const id = Number(search.get('id') ?? 1);
-  const fromUrl = search.get('address') as `0x${string}` | null;
-  const client = usePublicClient();
-  const { writeContractAsync } = useWriteContract();
+  const searchAddress = search.get('address');
+  const envAddress = process.env.NEXT_PUBLIC_MARKET_ADDRESS;
+  const contractId =
+    (searchAddress && searchAddress.startsWith('0x') ? searchAddress : undefined) ??
+    (envAddress && envAddress.startsWith('0x') ? envAddress : '');
   const { address: connectedAddress, isConnected } = useAccount();
+  const { writeContractAsync } = useWriteContract();
+
 
   const [market, setMarket] = useState<Market | null>(null);
   const [userBet, setUserBet] = useState<BetInfo | null>(null);
+  const [alreadyClaimed, setAlreadyClaimed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [redeeming, setRedeeming] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [addr, setAddr] = useState<`0x${string}` | null>(fromUrl && fromUrl.startsWith('0x') ? fromUrl : null);
 
-  // If no address from URL or env, try to discover from configured deployers
+
+  // Fetch market info + resolution
   useEffect(() => {
-    if (addr || !client) return;
-    let cancelled = false;
-    const run = async () => {
-      try {
-        const discovered = await discoverVybeContractsFromDeployers(client);
-        if (!cancelled && discovered.length > 0) {
-          // pick the most recent (last) discovered contract
-          setAddr(discovered[discovered.length - 1]);
-        }
-      } catch {
-        // ignore
-      }
-    };
-    run();
-    return () => { cancelled = true; };
-  }, [addr, client]);
+    if (!contractId || !contractId.startsWith('0x') || !id) {
+      setError("Contract address not provided. Set NEXT_PUBLIC_MARKET_ADDRESS or open with ?address=0x...");
+      return;
+    }
+    setError(null);
+    const client = new GraphQLClient(GRAPHQL_ENDPOINT);
 
-  // --- Fetch Market Data ---
+
+    client.request(MARKET_QUERY, { marketId: id }).then(data => {
+      const mktCreated = data.VybePredictionMarket_MarketCreated?.[0];
+      const resolved = data.VybePredictionMarket_Resolved?.[0];
+
+
+      if (!mktCreated) {
+        setError("Market not found");
+        return;
+      }
+
+
+      setMarket({
+        id,
+        question: mktCreated.question,
+        trackId: mktCreated.trackId,
+        threshold: Number(mktCreated.threshold),
+        deadline: Number(mktCreated.deadline),
+        resolved: Boolean(resolved),
+        outcomeYes: resolved?.outcomeYes ?? false,
+        yesPool: BigInt(resolved?.yesPool ?? 0),
+        noPool: BigInt(resolved?.noPool ?? 0),
+      });
+    }).catch(err => setError(err.message));
+  }, [contractId, id]);
+
+
+  // Fetch user bets and mark claimed if redeemed
   useEffect(() => {
-    if (!client) return;
+    if (!connectedAddress || !isConnected || !id) return;
 
-    const fetchMarket = async () => {
-      try {
-        setError(null);
-        // Preflight checks to avoid `returned no data (0x)`
-        if (!addr) {
-          setError('Contract address not set or discoverable. Provide NEXT_PUBLIC_DEPLOYER_ADDRESS[ES], or open this page with ?address=0x...');
-          return;
-        }
 
-        const chainId = await client.getChainId();
-        console.log('[Event] chainId=', chainId, 'address=', addr, 'marketId=', id);
+    const client = new GraphQLClient(GRAPHQL_ENDPOINT);
 
-        const bytecode = await client.getBytecode({ address: addr });
-        if (!bytecode || bytecode === '0x') {
-          setError(`No contract code found at ${addr}. Is the node fresh and was the contract deployed to this chain?`);
-          return;
-        }
 
-        const mc = await client.readContract({
-          address: addr,
-          abi: VYBE_CONTRACT_ABI,
-          functionName: 'marketCount',
-          args: [],
-        }) as bigint;
-        if (mc === BigInt(0)) {
-          setError('No markets exist yet. Run the deploy script to create a demo market.');
-          return;
-        }
-        if (BigInt(id) > mc) {
-          setError(`Market ${id} does not exist (marketCount=${mc}).`);
-          return;
-        }
+    client.request(USER_BETS_QUERY, {
+      user: connectedAddress.toLowerCase(),
+      marketId: id,
+    }).then(data => {
+      const bets = data.VybePredictionMarket_BetPlaced || [];
+      const redeems = data.VybePredictionMarket_Redeemed || [];
 
-        const result = await client.readContract({
-          address: addr,
-          abi: VYBE_CONTRACT_ABI,
-          functionName: 'getMarket',
-          args: [BigInt(id)],
-        }) as MarketTuple;
 
-        const [
-          question,
-          trackId,
-          threshold,
-          deadline,
-          resolved,
-          outcomeYes,
-          yesPool,
-          noPool,
-        ] = result;
-
-        setMarket({
-          id,
-          question,
-          trackId,
-          threshold: Number(threshold),
-          deadline: Number(deadline),
-          resolved,
-          outcomeYes,
-          yesPool: yesPool,
-          noPool: noPool,
-        });
-      } catch (err) {
-        console.error('Error fetching market:', err);
-        setError((err as Error)?.message ?? 'Failed to fetch market');
+      if (bets.length === 0) {
+        setUserBet(null);
+        setAlreadyClaimed(false);
+        return;
       }
-    };
 
-    fetchMarket();
-  }, [client, id, addr]);
 
-  // --- Fetch user's bet info (to check if already claimed) ---
-  useEffect(() => {
-    if (!client || !isConnected || !connectedAddress || !addr) return;
+      const redeemedMarketIds = new Set(redeems.map((r: any) => r.marketId));
+      const bet = bets[0];
+      setUserBet({
+        marketId: Number(bet.marketId),
+        betYes: bet.yes,
+        amount: BigInt(bet.amount),
+        claimed: redeemedMarketIds.has(bet.marketId),
+      });
+      setAlreadyClaimed(redeemedMarketIds.has(bet.marketId));
+    }).catch(console.error);
+  }, [connectedAddress, isConnected, id]);
 
-    const loadUserBet = async () => {
-      try {
-        const result = await client.readContract({
-          address: addr,
-          abi: VYBE_CONTRACT_ABI,
-          functionName: 'getUserBets',
-          args: [connectedAddress],
-        }) as any[];
 
-        const parsed = result.map((b: any) => ({
-          marketId: Number(b.marketId),
-          betYes: b.betYes,
-          amount: b.amount as bigint,
-          claimed: b.claimed,
-        })) as BetInfo[];
-
-        const thisMarketBet = parsed.find((b) => b.marketId === id);
-        if (thisMarketBet) setUserBet(thisMarketBet);
-      } catch (err) {
-        console.error('Error loading user bet:', err);
-      }
-    };
-
-    loadUserBet();
-  }, [client, connectedAddress, id, isConnected, addr]);
-
-  // --- Place Bet ---
+  // Place Bet transaction
   const handleBet = async (betYes: boolean) => {
+    if (!isConnected || !connectedAddress || !contractId) {
+      setError('Connect your wallet with a contract address.');
+      return;
+    }
+    setLoading(true);
+    setError(null);
+
+
     try {
-      setLoading(true);
-      setError(null);
-      if (!isConnected || !connectedAddress) {
-        setError('Connect your wallet to place a bet.');
-        return;
-      }
-      if (!client) {
-        setError('RPC client not ready.');
-        return;
-      }
-      if (!addr) {
-        setError('Contract address unavailable.');
-        return;
-      }
-      const functionName = betYes ? 'buyYes' : 'buyNo';
-      const sim = await client.simulateContract({
-        address: addr,
+      const tx = await writeContractAsync({
+        address: contractId as `0x${string}`,
         abi: VYBE_CONTRACT_ABI,
-        functionName,
+        functionName: betYes ? 'buyYes' : 'buyNo',
         args: [BigInt(id)],
-        account: connectedAddress,
         value: parseEther('0.1'),
       });
-      const tx = await writeContractAsync({ ...sim.request });
       console.log('Bet tx:', tx);
     } catch (err) {
       console.error('Bet failed:', err);
-      setError((err as Error)?.message ?? 'Bet transaction failed');
+      setError((err as Error).message ?? 'Bet failed');
     } finally {
       setLoading(false);
     }
   };
 
-  // --- Redeem Winnings ---
+
+  // Redeem transaction
   const handleRedeem = async () => {
+    if (!isConnected || !connectedAddress || !contractId) {
+      setError('Connect your wallet with a contract address.');
+      return;
+    }
+    setRedeeming(true);
+    setError(null);
+
+
     try {
-      setRedeeming(true);
-      setError(null);
-      if (!isConnected || !connectedAddress) {
-        setError('Connect your wallet to redeem.');
-        return;
-      }
-      if (!client) {
-        setError('RPC client not ready.');
-        return;
-      }
-      if (!addr) {
-        setError('Contract address unavailable.');
-        return;
-      }
-      const sim = await client.simulateContract({
-        address: addr,
+      const tx = await writeContractAsync({
+        address: contractId as `0x${string}`,
         abi: VYBE_CONTRACT_ABI,
         functionName: 'redeem',
         args: [BigInt(id)],
-        account: connectedAddress,
       });
-      const tx = await writeContractAsync({ ...sim.request });
       console.log('Redeem tx:', tx);
-      setUserBet((prev) => (prev ? { ...prev, claimed: true } : prev));
+      setAlreadyClaimed(true);
     } catch (err) {
       console.error('Redeem failed:', err);
-      setError((err as Error)?.message ?? 'Redeem failed');
+      setError((err as Error).message ?? 'Redeem failed');
     } finally {
       setRedeeming(false);
     }
   };
 
-  // Keep closed markets accessible: no redirect; users can view details and redeem if applicable.
 
-  if (error)
-    return (
-      <div className="p-6 text-center text-red-400">
-        <p className="font-semibold mb-2">Error loading market</p>
-        <pre className="text-sm opacity-80">{error}</pre>
-      </div>
-    );
+  if (error) return (
+    <div className="p-6 text-center text-red-400">
+      <p className="font-semibold mb-2">Error loading market</p>
+      <pre className="text-sm opacity-80">{error}</pre>
+    </div>
+  );
+
 
   if (!market) return <p className="p-8 text-center">Loading market...</p>;
 
+
   const nowSec = Math.floor(Date.now() / 1000);
   const isClosed = market.resolved || market.deadline <= nowSec;
-  const alreadyClaimed = userBet?.claimed ?? false;
+
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8 space-y-6">
@@ -275,45 +252,43 @@ export default function EventPageContent() {
           </div>
           <h1 className="h2 mt-1">{market.question}</h1>
           <p className="mt-2 muted">Track ID: {market.trackId}</p>
-          {addr && (
-            <p className="mt-1 text-xs text-white/40 break-all">Contract: {addr}</p>
+          {contractId && (
+            <p className="mt-1 text-xs text-white/40 break-all">Contract: {contractId}</p>
           )}
+
 
           <div className="mt-4 text-sm">
             <div>Yes Pool: {formatEther(market.yesPool)} ETH</div>
             <div>No Pool: {formatEther(market.noPool)} ETH</div>
           </div>
 
+
           {/* Bet buttons */}
           <div className="mt-6 grid sm:grid-cols-2 gap-4">
             <button
               onClick={() => handleBet(true)}
-              disabled={
-                loading || (!!userBet && userBet.betYes === false)
-              }
+              disabled={loading || (!!userBet && userBet.betYes === false) || isClosed}
               className={`btn rounded-full ${userBet?.betYes === true ? 'btn-primary' : 'btn-outline'}`}
             >
               {loading ? 'Processing...' : (isClosed ? 'Betting closed' : 'Bet Yes (0.1 ETH)')}
             </button>
 
+
             <button
               onClick={() => handleBet(false)}
-              disabled={
-                loading || isClosed || (!!userBet && userBet.betYes === true)
-              }
+              disabled={loading || isClosed || (!!userBet && userBet.betYes === true)}
               className={`btn rounded-full ${userBet?.betYes === false ? 'btn-ghost' : 'btn-outline'}`}
             >
               {loading ? 'Processing...' : (isClosed ? 'Betting closed' : 'Bet No (0.1 ETH)')}
             </button>
           </div>
 
+
           {/* Claim Winnings Button (visible only after market is resolved) */}
           {market.resolved && (
             <div className="mt-8 text-center">
               {alreadyClaimed ? (
-                <div className="text-green-400 text-sm font-semibold">
-                  Already Claimed
-                </div>
+                <div className="text-green-400 text-sm font-semibold">Already Claimed</div>
               ) : (
                 <button
                   onClick={handleRedeem}
