@@ -1,9 +1,10 @@
+scalar BigInt
 type VybePredictionMarket_BetPlaced {
     id: ID!
     marketId: Int!
     user: String!
     yes: Boolean!
-    amount: Int!
+    amount: BigInt!
 }
 
 type VybePredictionMarket_MarketCreated {
@@ -11,21 +12,21 @@ type VybePredictionMarket_MarketCreated {
     marketId: Int!
     question: String!
     trackId: String!
-    threshold: Int!
-    deadline: Int!
+    threshold: BigInt!
+    deadline: BigInt!
 }
 
 type VybePredictionMarket_Redeemed {
     id: ID!
     marketId: Int!
     user: String!
-    payout: Int!
+    payout: BigInt!
 }
 
 type VybePredictionMarket_Resolved {
     id: ID!
     marketId: Int!
     outcomeYes: Boolean!
-    yesPool: Int!
-    noPool: Int!
+    yesPool: BigInt!
+    noPool: BigInt!
 }
