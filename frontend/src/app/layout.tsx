@@ -2,6 +2,7 @@
 
 import './globals.css';
 import Link from 'next/link';
+import Image from 'next/image';
 import { WagmiProvider } from 'wagmi';
 import { getDefaultConfig, RainbowKitProvider } from '@rainbow-me/rainbowkit';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -28,11 +29,16 @@ function NavBar() {
       <nav className="mx-auto max-w-6xl px-4 h-16 flex items-center justify-between">
         {/* Left: Brand */}
         <div className="flex items-center gap-3">
-          <div className="h-8 w-8 rounded grid place-items-center bg-[var(--brand)] text-[var(--bg)] font-extrabold">
-            V
-          </div>
-          <Link href="/" className="font-semibold text-[var(--fg)]">
-            Vybe
+          <Link href="/" className="flex items-center gap-2">
+            <Image
+              src="/logo.svg"
+              alt="Vybe logo"
+              width={32}
+              height={32}
+              className="rounded-md"
+              priority
+            />
+            <span className="font-semibold text-[var(--fg)] text-lg">Vybe</span>
           </Link>
         </div>
 
