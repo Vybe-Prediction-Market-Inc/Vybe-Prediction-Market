@@ -21,11 +21,7 @@ const config: HardhatUserConfig = {
             type: "http",
         },
         sepolia: {
-            url:
-                process.env.RPC_URL ??
-                (() => {
-                    throw new Error("RPC_URL environment variable is not set");
-                })(),
+            url: "https://eth-sepolia.g.alchemy.com/v2/CtjrnAb66z8l9qFZ0ib4u",
             accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
             chainId: 11155111,
             type: "http",
