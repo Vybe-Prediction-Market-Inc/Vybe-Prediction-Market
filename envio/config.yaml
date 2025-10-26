@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=./node_modules/envio/evm.schema.json
+name: envio-indexer
+networks:
+    - id: 11155111
+      start_block: 9488438
+      contracts:
+          - name: VybePredictionMarket
+            address:
+                - 0xDD865924542C3Eb6ddFeD0732a33a5c722D85Fe0
+            handler: src/EventHandlers.ts
+            events:
+                - event: BetPlaced(uint256 indexed marketId, address indexed user, bool yes, uint256 amount)
+                - event: MarketCreated(uint256 indexed marketId, string question, string trackId, uint256 threshold, uint256 deadline)
+                - event: Redeemed(uint256 indexed marketId, address indexed user, uint256 payout)
+                - event: Resolved(uint256 indexed marketId, bool outcomeYes, uint256 yesPool, uint256 noPool)
+unordered_multichain_mode: true
+preload_handlers: true
