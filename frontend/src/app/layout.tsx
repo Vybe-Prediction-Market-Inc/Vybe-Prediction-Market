@@ -96,14 +96,16 @@ function NavBar() {
           <CustomWalletButton />
         </div>
       </nav>
-      <div
-        id="mobile-nav"
-        className={`sm:hidden border-t border-white/10 bg-[var(--bg)]/95 transition-transform ${mobileMenuOpen ? 'translate-y-0 opacity-100' : '-translate-y-2 opacity-0 pointer-events-none'}`}
-      >
-        <div className="mx-auto max-w-6xl px-4 py-4 flex flex-col gap-4">
-          {navLinks}
+      {mobileMenuOpen && (
+        <div
+          id="mobile-nav"
+          className="sm:hidden border-t border-white/10 bg-[var(--bg)]/95"
+        >
+          <div className="mx-auto max-w-6xl px-4 py-4 flex flex-col gap-4">
+            {navLinks}
+          </div>
         </div>
-      </div>
+      )}
     </header>
   );
 }
